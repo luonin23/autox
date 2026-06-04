@@ -12,25 +12,24 @@ module.exports = {
 
     // Kimi (Moonshot) API 配置
     kimi: {
-        apiKey: "", // <-- 填入你的 Moonshot API Key
+        baseUrl: "https://api.moonshot.cn/v1",
+        apiKey: "",      // <-- 填入你的 Moonshot API Key
         model: "kimi-k2-6",
-        url: "https://api.moonshot.cn/v1/chat/completions",
     },
 
     // DeepSeek API 配置
     deepseek: {
-        apiKey: "", // <-- 填入你的 DeepSeek API Key
+        baseUrl: "https://api.deepseek.com/v1",
+        apiKey: "",      // <-- 填入你的 DeepSeek API Key
         model: "deepseek-chat",
-        url: "https://api.deepseek.com/v1/chat/completions",
     },
 
     // 本地 llama.cpp server 配置
     // llama.cpp 启动时加 --api-key 可设密钥，否则留空
     local: {
+        baseUrl: "http://127.0.0.1:8080/v1",
         apiKey: "",
         model: "local",
-        // Termux 真机用 127.0.0.1，模拟器用 10.0.2.2
-        url: "http://127.0.0.1:8080/v1/chat/completions",
     },
 
     // 智能任务执行参数

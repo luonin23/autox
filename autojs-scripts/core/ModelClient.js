@@ -14,9 +14,9 @@ const ModelClient = (function () {
         log("⚠️ 未找到 config.js，使用默认配置。请复制 config.template.js 为 config.js");
         CONFIG = {
             provider: "kimi",
-            kimi: { apiKey: "", model: "kimi-k2-6", url: "https://api.moonshot.cn/v1/chat/completions" },
-            deepseek: { apiKey: "", model: "deepseek-chat", url: "https://api.deepseek.com/v1/chat/completions" },
-            local: { apiKey: "", model: "local", url: "http://127.0.0.1:8080/v1/chat/completions" },
+            kimi: { apiKey: "", model: "kimi-k2-6", baseUrl: "https://api.moonshot.cn/v1" },
+            deepseek: { apiKey: "", model: "deepseek-chat", baseUrl: "https://api.deepseek.com/v1" },
+            local: { apiKey: "", model: "local", baseUrl: "http://127.0.0.1:8080/v1" },
         };
     }
     // ===================================================
@@ -217,7 +217,8 @@ const ModelClient = (function () {
 
         toastLog("🧠 正在思考...");
         // 设置 30 秒超时，防止网络卡住导致脚本无法退出
-        const res = http.postJson(cfg.url, payload, {
+        var apiUrl = (cfg.baseUrl || "").replace(/\/$/, "") + "/chat/completions";
+        const res = http.postJson(apiUrl, payload, {
             headers: headers,
             timeout: 30000,
         });

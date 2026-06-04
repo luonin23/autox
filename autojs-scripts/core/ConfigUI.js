@@ -18,9 +18,9 @@ function showConfigUI(onSave) {
     } catch (e) {
         current = {
             provider: "kimi",
-            kimi: { apiKey: "", model: "kimi-k2-6", url: "" },
-            deepseek: { apiKey: "", model: "deepseek-chat", url: "" },
-            local: { apiKey: "", model: "local", url: "" },
+            kimi: { baseUrl: "https://api.moonshot.cn/v1", apiKey: "", model: "kimi-k2-6" },
+            deepseek: { baseUrl: "https://api.deepseek.com/v1", apiKey: "", model: "deepseek-chat" },
+            local: { baseUrl: "http://127.0.0.1:8080/v1", apiKey: "", model: "local" },
             maxSteps: 15,
         };
     }
@@ -55,7 +55,7 @@ function showConfigUI(onSave) {
             <!-- 本地模型配置页 -->
             <vertical id="pageLocal" visibility="gone">
                 <text text="本地模型地址" textSize="14sp" textColor="#666666"/>
-                <input id="localUrl" text="" hint="http://127.0.0.1:8080/v1/chat/completions" marginBottom="8"/>
+                <input id="localUrl" text="" hint="http://127.0.0.1:8080/v1" marginBottom="8"/>
                 <text text="本地模型名" textSize="14sp" textColor="#666666"/>
                 <input id="localModel" text="" hint="local" marginBottom="12"/>
             </vertical>
@@ -84,7 +84,7 @@ function showConfigUI(onSave) {
     ui.kimiModel.setText(current.kimi.model || "kimi-k2-6");
     ui.deepseekApiKey.setText(current.deepseek.apiKey || "");
     ui.deepseekModel.setText(current.deepseek.model || "deepseek-chat");
-    ui.localUrl.setText(current.local.url || "");
+    ui.localUrl.setText(current.local.baseUrl || "");
     ui.localModel.setText(current.local.model || "local");
     ui.maxSteps.setText(String(current.maxSteps || 15));
 
@@ -120,12 +120,12 @@ function showConfigUI(onSave) {
                 var msg = "";
                 if (activeProvider === "kimi") {
                     var key = String(ui.kimiApiKey.getText() || "").trim();
-                    var url = "https://api.moonshot.cn/v1/chat/completions";
+                    var baseUrl = "https://api.moonshot.cn/v1";
                     if (key.length < 10) {
                         ui.status.setText("❌ Kimi API Key 不能为空");
                         return;
                     }
-                    res = http.postJson(url, {
+                    res = http.postJson(baseUrl + "/chat/completions", {
                         model: "kimi-k2-6",
                         messages: [{ role: "user", content: "hi" }],
                         max_tokens: 1,
@@ -138,12 +138,12 @@ function showConfigUI(onSave) {
                     });
                 } else if (activeProvider === "deepseek") {
                     var key = String(ui.deepseekApiKey.getText() || "").trim();
-                    var url = "https://api.deepseek.com/v1/chat/completions";
+                    var baseUrl = "https://api.deepseek.com/v1";
                     if (key.length < 10) {
                         ui.status.setText("❌ DeepSeek API Key 不能为空");
                         return;
                     }
-                    res = http.postJson(url, {
+                    res = http.postJson(baseUrl + "/chat/completions", {
                         model: "deepseek-chat",
                         messages: [{ role: "user", content: "hi" }],
                         max_tokens: 1,
@@ -155,8 +155,8 @@ function showConfigUI(onSave) {
                         timeout: 15000,
                     });
                 } else {
-                    var url = String(ui.localUrl.getText() || "http://127.0.0.1:8080/v1/chat/completions").trim();
-                    res = http.get(url.replace("/v1/chat/completions", ""), { timeout: 5000 });
+                    var baseUrl = String(ui.localUrl.getText() || "http://127.0.0.1:8080/v1").trim();
+                    res = http.get(baseUrl.replace(/\/$/, "") + "/models", { timeout: 5000 });
                 }
 
                 var statusCode = res ? res.statusCode : 0;
@@ -177,7 +177,7 @@ function showConfigUI(onSave) {
         var kimiModel = String(ui.kimiModel.getText() || "kimi-k2-6").trim();
         var deepseekApiKey = String(ui.deepseekApiKey.getText() || "").trim();
         var deepseekModel = String(ui.deepseekModel.getText() || "deepseek-chat").trim();
-        var localUrl = String(ui.localUrl.getText() || "http://127.0.0.1:8080/v1/chat/completions").trim();
+        var localBaseUrl = String(ui.localUrl.getText() || "http://127.0.0.1:8080/v1").trim();
         var localModel = String(ui.localModel.getText() || "local").trim();
         var maxSteps = parseInt(String(ui.maxSteps.getText() || "15")) || 15;
 
@@ -195,21 +195,21 @@ function showConfigUI(onSave) {
             '    provider: "' + activeProvider + '",\n' +
             '\n' +
             '    kimi: {\n' +
+            '        baseUrl: "https://api.moonshot.cn/v1",\n' +
             '        apiKey: "' + kimiApiKey + '",\n' +
             '        model: "' + kimiModel + '",\n' +
-            '        url: "https://api.moonshot.cn/v1/chat/completions",\n' +
             '    },\n' +
             '\n' +
             '    deepseek: {\n' +
+            '        baseUrl: "https://api.deepseek.com/v1",\n' +
             '        apiKey: "' + deepseekApiKey + '",\n' +
             '        model: "' + deepseekModel + '",\n' +
-            '        url: "https://api.deepseek.com/v1/chat/completions",\n' +
             '    },\n' +
             '\n' +
             '    local: {\n' +
+            '        baseUrl: "' + localBaseUrl + '",\n' +
             '        apiKey: "",\n' +
             '        model: "' + localModel + '",\n' +
-            '        url: "' + localUrl + '",\n' +
             '    },\n' +
             '\n' +
             '    maxSteps: ' + maxSteps + ',\n' +
