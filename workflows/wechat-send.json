@@ -1,0 +1,14 @@
+{
+  "name": "微信发送消息",
+  "description": "打开微信，搜索联系人，进入聊天页发送消息",
+  "steps": [
+    { "action": "launch", "target": "微信", "delay": 4000 },
+    { "action": "click", "target": "搜索", "delay": 2000 },
+    { "action": "input", "target": "搜索", "text": "$contact", "delay": 2500 },
+    { "action": "click", "target": "$contact", "delay": 3000 },
+    { "action": "input", "target": "发消息", "text": "$message", "delay": 1500 },
+    { "action": "click", "target": "发送", "delay": 2000 },
+    { "action": "toast", "target": "✅ 消息已发送" },
+    { "action": "done" }
+  ]
+}

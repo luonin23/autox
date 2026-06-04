@@ -1,0 +1,19 @@
+{
+  "name": "打开系统设置项",
+  "description": "打开设置并搜索指定设置项",
+  "steps": [
+    { "action": "launch", "target": "设置", "delay": 3000 },
+    {
+      "action": "if",
+      "condition": { "type": "exists", "target": "搜索设置" },
+      "then": [
+        { "action": "click", "target": "搜索设置", "delay": 1500 },
+        { "action": "input", "target": "搜索设置", "text": "$page", "delay": 2000 }
+      ],
+      "else": [
+        { "action": "click", "target": "$page", "delay": 2000 }
+      ]
+    },
+    { "action": "done" }
+  ]
+}
