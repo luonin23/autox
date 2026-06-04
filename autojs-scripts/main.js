@@ -15,23 +15,27 @@ if (typeof device === "undefined") {
     require("./test/mock.js");
 }
 
+// 将所有代码包裹在 IIFE 中，避免 Rhino 引擎下变量名与全局冲突
+(function () {
+
 // 导入模块
-const StopHelper = require("./core/StopHelper.js");
-const ModelClient = require("./core/ModelClient.js");
-const UIAutomator = require("./core/UIAutomator.js");
-const Logger = require("./core/Logger.js");
-const SemanticParser = require("./core/SemanticParser.js");
-const TaskPlanner = require("./core/TaskPlanner.js");
-const sendWeChatMessage = require("./tasks/WeChatSend.js");
-const ClockIn = require("./tasks/ClockIn.js");
-const DingTalk = require("./tasks/DingTalk.js");
-const SystemSettings = require("./tasks/SystemSettings.js");
-const Workflow = require("./tasks/Workflow.js");
-const Camera = require("./tasks/Camera.js");
-const Taobao = require("./tasks/Taobao.js");
-const Alipay = require("./tasks/Alipay.js");
-const Navigation = require("./tasks/Navigation.js");
-const ScreenshotCleaner = require("./core/ScreenshotCleaner.js");
+var StopHelper = require("./core/StopHelper.js");
+var ModelClient = require("./core/ModelClient.js");
+var UIAutomator = require("./core/UIAutomator.js");
+var Logger = require("./core/Logger.js");
+var SemanticParser = require("./core/SemanticParser.js");
+var TaskPlanner = require("./core/TaskPlanner.js");
+var sendWeChatMessage = require("./tasks/WeChatSend.js");
+var ClockIn = require("./tasks/ClockIn.js");
+var DingTalk = require("./tasks/DingTalk.js");
+var SystemSettings = require("./tasks/SystemSettings.js");
+var Workflow = require("./tasks/Workflow.js");
+var CameraTask = require("./tasks/Camera.js");
+var Taobao = require("./tasks/Taobao.js");
+var Alipay = require("./tasks/Alipay.js");
+var Navigation = require("./tasks/Navigation.js");
+var ScreenshotCleaner = require("./core/ScreenshotCleaner.js");
+var ChatUI = require("./core/ChatUI.js");
 
 // 加载用户配置
 let CONFIG = null;
@@ -42,24 +46,35 @@ try {
     CONFIG = null;
 }
 
-// 如果配置不存在且支持 UI，弹出配置对话框
-if (!CONFIG && typeof ui !== "undefined") {
-    const ConfigUI = require("./core/ConfigUI.js");
-    ConfigUI.show(function () {
-        // 保存后重新加载配置并继续
-        try {
-            CONFIG = require("./config.js");
-            main();
-        } catch (e2) {
-            toastLog("❌ 配置加载失败: " + e2.message);
-        }
-    });
-    // 首次显示 UI 后暂停执行，等待用户保存
-    return;
+// 启动入口（包装为函数，避免顶层 return 在 Rhino 引擎中报错）
+function _startApp() {
+    if (!CONFIG && typeof ui !== "undefined") {
+        var ConfigUI = require("./core/ConfigUI.js");
+        ConfigUI.show(function () {
+            // 保存后重新加载配置并继续
+            try {
+                CONFIG = require("./config.js");
+                main();
+            } catch (e2) {
+                toastLog("❌ 配置加载失败: " + e2.message);
+            }
+        });
+        // 首次显示 UI 后暂停执行，等待用户保存
+        return;
+    }
+
+    if (!CONFIG) {
+        CONFIG = { maxSteps: 15 };
+    }
+
+    main();
 }
 
-if (!CONFIG) {
-    CONFIG = { maxSteps: 15 };
+// 页面加载完成后启动
+if (typeof ui !== "undefined" && ui.post) {
+    ui.post(_startApp);
+} else {
+    _startApp();
 }
 
 // ===================== AccessibilityService 检测 =====================
@@ -78,22 +93,22 @@ function checkAccessibility() {
 
 // ===================== 命令行参数解析 =====================
 function parseArgs() {
-    const args = {};
+    var args = {};
     if (typeof engines !== "undefined" && engines.myEngine) {
-        const intent = engines.myEngine().execArgv;
+        var intent = engines.myEngine().execArgv;
         if (intent && intent.intent && intent.intentExtras) {
-            const extras = intent.intentExtras;
+            var extras = intent.intentExtras;
             for (let key in extras) {
                 args[key] = extras[key];
             }
         }
     }
     if (typeof process !== "undefined" && process.argv) {
-        const argv = process.argv;
+        var argv = process.argv;
         for (let i = 2; i < argv.length; i++) {
-            const arg = argv[i];
+            var arg = argv[i];
             if (arg.startsWith("--")) {
-                const kv = arg.substring(2).split("=");
+                var kv = arg.substring(2).split("=");
                 args[kv[0]] = kv[1] !== undefined ? kv[1] : true;
             }
         }
@@ -101,7 +116,7 @@ function parseArgs() {
     return args;
 }
 
-const ARGS = parseArgs();
+var ARGS = parseArgs();
 
 // ===================== 智能任务执行器（带错误恢复）=====================
 function runAgent(instruction) {
@@ -112,7 +127,7 @@ function runAgent(instruction) {
 
     // ========== 第 1 步：语义解析 ==========
     log("🔍 正在解析用户意图...");
-    const intention = SemanticParser.parse(instruction);
+    var intention = SemanticParser.parse(instruction);
     log("📋 解析结果:", JSON.stringify(intention));
 
     // ========== 第 2 步：任务规划 ==========
@@ -129,8 +144,8 @@ function runAgent(instruction) {
         log("⚠️ 任务规划器无法处理此指令，回退到模型决策");
     }
 
-    const maxSteps = CONFIG.maxSteps || 15;
-    const maxRecoveries = 2;
+    var maxSteps = CONFIG.maxSteps || 15;
+    var maxRecoveries = 2;
     let step = 0;
     let done = false;
     let recoveryCount = 0;
@@ -155,7 +170,7 @@ function runAgent(instruction) {
                 log("📌 执行规划步骤 [" + planIndex + "/" + planSteps.length + "]: " + cmd.reason);
             } else {
                 // 规划器步骤已用完，或规划器无法处理，回退到模型
-                const screenContext = UIAutomator.getScreenContext(1500);
+                var screenContext = UIAutomator.getScreenContext(1500);
                 log("📱 屏幕内容:", screenContext.substring(0, 200) + "...");
 
                 if (StopHelper.check()) break;
@@ -170,7 +185,7 @@ function runAgent(instruction) {
             if (StopHelper.check()) break;
 
             Logger.stepLog(step, cmd.action, cmd.target, "ok");
-            const shouldContinue = UIAutomator.executeCommand(cmd);
+            var shouldContinue = UIAutomator.executeCommand(cmd);
             if (!shouldContinue || cmd.action === "done") {
                 done = true;
                 break;
@@ -179,7 +194,7 @@ function runAgent(instruction) {
             log("❌ 步骤出错:", e.message);
             toastLog("出错了: " + e.message);
 
-            const screenshotPath = UIAutomator.captureDebug("error_step_" + step + ".png");
+            var screenshotPath = UIAutomator.captureDebug("error_step_" + step + ".png");
             Logger.errorLog(e.message, screenshotPath);
 
             if (recoveryCount < maxRecoveries) {
@@ -187,14 +202,14 @@ function runAgent(instruction) {
                 log("🔄 尝试错误恢复 (" + recoveryCount + "/" + maxRecoveries + ")...");
 
                 try {
-                    const errorScreen = UIAutomator.getScreenContext(1000);
-                    const recoveryInstruction =
+                    var errorScreen = UIAutomator.getScreenContext(1000);
+                    var recoveryInstruction =
                         `任务：${instruction}\n` +
                         `之前执行时出错了：${e.message}\n` +
                         `当前屏幕：${errorScreen}\n` +
                         `请修复问题并继续完成任务。`;
 
-                    const recoveryCmd = ModelClient.callModel(recoveryInstruction, errorScreen);
+                    var recoveryCmd = ModelClient.callModel(recoveryInstruction, errorScreen);
                     if (recoveryCmd && recoveryCmd.action) {
                         log("🤖 恢复指令:", JSON.stringify(recoveryCmd));
                         UIAutomator.executeCommand(recoveryCmd);
@@ -261,7 +276,7 @@ function quickTask(taskType, params) {
                 success = SystemSettings.setBrightness(parseInt(params.level));
                 break;
             case "camera":
-                success = Camera.takePhoto({
+                success = CameraTask.takePhoto({
                     front: params.front === "true" || params.front === true,
                     count: parseInt(params.count) || 1,
                     delay: parseInt(params.delay) || 2000,
@@ -324,14 +339,14 @@ function runWorkflow(workflowInput) {
 
     Logger.taskStart("workflow", workflow.name, null);
 
-    const variables = {};
+    var variables = {};
     for (let key in ARGS) {
         if (key.startsWith("var_")) {
             variables["$" + key.substring(4)] = ARGS[key];
         }
     }
 
-    const success = Workflow.execute(workflow, variables);
+    var success = Workflow.execute(workflow, variables);
     Logger.taskEnd("workflow", success, success ? "完成" : "失败", (workflow.steps || []).length);
 
     // 自动清理过期截图
@@ -343,7 +358,7 @@ function runWorkflow(workflowInput) {
  */
 function runWorkflowFromFile(filePath) {
     try {
-        const content = files.read(filePath);
+        var content = files.read(filePath);
         runWorkflow(content);
     } catch (e) {
         toastLog("❌ 读取工作流文件失败: " + e.message);
@@ -380,15 +395,9 @@ function main() {
         return;
     }
 
-    // 情况 5：AutoX.js 对话框交互模式
-    if (typeof rawInput !== "undefined") {
-        const instruction = rawInput(
-            "请输入任务指令",
-            "给张三发微信说晚上吃饭"
-        );
-        if (instruction) {
-            runAgent(instruction);
-        }
+    // 情况 5：AutoX.js 交互模式 — 启动 ChatUI（带底部 Tab：对话 + 配置）
+    if (typeof ui !== "undefined") {
+        ChatUI.show();
         return;
     }
 
@@ -409,3 +418,5 @@ function main() {
 }
 
 main();
+
+})();

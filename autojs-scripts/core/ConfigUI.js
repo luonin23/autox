@@ -177,7 +177,8 @@ function showConfigUI(onSave) {
             '};\n';
 
         try {
-            const configPath = files.path("./config.js");
+            const configPath = files.path("/sdcard/AutoX/fold7-agent/autojs-scripts/config.js");
+            files.createWithDirs(configPath);
             files.write(configPath, configContent);
             toastLog("✅ 配置已保存");
             ui.finish();

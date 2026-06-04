@@ -9,7 +9,7 @@ const Logger = (function () {
 
     // 确保日志目录存在
     try {
-        files.createWithDirs(LOG_FILE);
+        files.createWithDirs(LOG_DIR);
     } catch (e) {
         log("⚠️ 创建日志目录失败:", e.message);
     }

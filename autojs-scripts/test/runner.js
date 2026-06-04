@@ -13,6 +13,8 @@ const assert = global._mockAssert;
 const UIAutomator = require("../core/UIAutomator.js");
 const ModelClient = require("../core/ModelClient.js");
 const Workflow = require("../tasks/Workflow.js");
+const SemanticParser = require("../core/SemanticParser.js");
+const ScriptGenerator = require("../core/ScriptGenerator.js");
 
 let passed = 0;
 let failed = 0;
@@ -157,6 +159,53 @@ test("Workflow 变量替换应生效", function () {
     );
     if (!ok) throw new Error("Workflow 返回 false");
     assert.actionContains("node_setText", { value: "你好张三" });
+});
+
+// 3.5 SemanticParser 语义解析
+test("SemanticParser 应解析发消息意图", function () {
+    const r = SemanticParser.parse("给张三发微信说晚上吃饭");
+    if (r.intent !== "send_message") throw new Error("意图应为 send_message，实际: " + r.intent);
+    if (r.target !== "张三") throw new Error("联系人应为 张三，实际: " + r.target);
+    if (r.content !== "晚上吃饭") throw new Error("内容应为 晚上吃饭，实际: " + r.content);
+});
+
+test("SemanticParser 应解析打卡意图", function () {
+    const r = SemanticParser.parse("钉钉打卡");
+    if (r.intent !== "clock_in") throw new Error("意图应为 clock_in，实际: " + r.intent);
+    if (r.app !== "钉钉") throw new Error("应用应为 钉钉，实际: " + r.app);
+});
+
+test("SemanticParser 应解析导航意图", function () {
+    const r = SemanticParser.parse("导航到天安门");
+    if (r.intent !== "navigate") throw new Error("意图应为 navigate，实际: " + r.intent);
+    if (r.target !== "天安门") throw new Error("目的地应为 天安门，实际: " + r.target);
+});
+
+test("SemanticParser 应解析打开应用意图", function () {
+    const r = SemanticParser.parse("打开设置");
+    if (r.intent !== "launch_app") throw new Error("意图应为 launch_app，实际: " + r.intent);
+    if (r.app !== "设置") throw new Error("应用应为 设置，实际: " + r.app);
+});
+
+// 3.6 ScriptGenerator 脚本生成
+test("ScriptGenerator.generate 应生成完整脚本", function () {
+    const script = ScriptGenerator.generate("打开微信", { intent: "launch_app", app: "微信", raw: "打开微信" }, [
+        { action: "launch", target: "微信", delay_ms: 3000, reason: "打开微信" },
+        { action: "done", reason: "完成" },
+    ]);
+    if (!script || script.length < 100) throw new Error("生成的脚本太短: " + script.length);
+    if (script.indexOf("Fold7 Agent") < 0) throw new Error("脚本缺少头部注释");
+    if (script.indexOf("StopHelper") < 0) throw new Error("脚本未引用 StopHelper");
+    if (script.indexOf("UIAutomator") < 0) throw new Error("脚本未引用 UIAutomator");
+});
+
+test("ScriptGenerator.generateInline 应生成内联脚本", function () {
+    const script = ScriptGenerator.generateInline("打开微信", { intent: "launch_app", app: "微信", raw: "打开微信" }, [
+        { action: "launch", target: "微信", delay_ms: 3000, reason: "打开微信" },
+        { action: "done", reason: "完成" },
+    ]);
+    if (!script || script.length < 50) throw new Error("生成的内联脚本太短: " + script.length);
+    if (script.indexOf("PLAN_STEPS") < 0) throw new Error("内联脚本缺少 PLAN_STEPS");
 });
 
 // 4. 综合场景

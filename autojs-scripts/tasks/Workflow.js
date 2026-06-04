@@ -165,7 +165,7 @@ function evaluateCondition(cond) {
  */
 function executeLoop(step, variables) {
     const maxIter = step.maxIterations || 10;
-    const body = steps = step.steps || [];
+    const body = step.steps || [];
     for (let iter = 0; iter < maxIter; iter++) {
         log("🔁 循环 " + (iter + 1) + "/" + maxIter);
         for (let i = 0; i < body.length; i++) {

@@ -35,11 +35,13 @@ fold7-agent/
 │   │   ├── ModelClient.js       # 模型 API 封装（Kimi / DeepSeek / Local）
 │   │   ├── UIAutomator.js       # 无障碍操作封装
 │   │   ├── Logger.js            # 📊 执行日志与统计
-│   │   ├── ConfigUI.js          # 🎛️ 可视化配置页面
+│   │   ├── ConfigUI.js          # 🎛️ 首次启动配置对话框
+│   │   ├── ChatUI.js            # 💬 主交互界面（对话+配置+历史）
 │   │   ├── StopHelper.js        # ⏹️ 统一停止控制（音量上键）
 │   │   ├── ScreenshotCleaner.js # 🧹 截图自动清理
 │   │   ├── SemanticParser.js    # 🔍 自然语言语义解析器
-│   │   └── TaskPlanner.js       # 📝 任务规划器（意图→步骤序列）
+│   │   ├── TaskPlanner.js       # 📝 任务规划器（意图→步骤序列）
+│   │   └── ScriptGenerator.js   # 📜 脚本生成器（完整脚本/内联脚本）
 │   ├── tasks/
 │   │   ├── WeChatSend.js        # 微信发消息（多策略回退）
 │   │   ├── ClockIn.js           # 通用定时打卡
@@ -58,7 +60,7 @@ fold7-agent/
 │   │   └── test-basic.js        # ⚡ 基础 API 验证
 │   ├── config.template.js       # 配置模板
 │   ├── config.js                # 用户配置（含 API Key，不提交 Git）
-│   ├── history.js               # 📜 执行历史查看器（AutoX.js UI）
+│   ├── history.js               # 📜 独立执行历史查看器（AutoX.js UI / 终端）
 │   └── main.js                  # 主入口
 ├── package.json                 # npm test / npm run mock
 └── README.md
@@ -70,12 +72,13 @@ fold7-agent/
 
 **方式一：手机可视化配置（推荐）**
 
-在 AutoX.js 中直接运行 `main.js`，如果检测到未配置，会自动弹出配置页面：
+在 AutoX.js 中直接运行 `main.js`，如果检测到未配置，会自动弹出配置对话框：
 
-- 模型提供商：下拉选择 Kimi / 本地
-- Kimi API Key：密码输入框
+- 模型提供商：下拉选择 Kimi / DeepSeek / 本地
+- API Key：密码输入框
 - 模型名称、本地服务地址
 - 最大执行步数
+- 测试连接按钮（保存前验证可用性）
 
 填写后点击保存即可。
 
@@ -227,12 +230,14 @@ node main.js --workflowFile=../workflows/wechat-send.json --var_contact="张三"
 项目包含完整的 Node.js 模拟测试框架：
 
 ```bash
-# 运行 11 个自动化测试用例
+# 运行自动化测试套件
 npm test
 
 # 测试覆盖范围：
 # - UIAutomator: safeClick / safeInput / executeCommand
-# - ModelClient: 结构化指令解析 / 重试机制
+# - ModelClient: 结构化指令解析 / 重试机制 / Markdown 容错清理
+# - SemanticParser: 发消息 / 打卡 / 导航 / 打开应用 等意图解析
+# - ScriptGenerator: 完整脚本 / 内联脚本生成
 # - Workflow: 顺序执行 / 条件分支 / 变量替换
 # - 综合场景: Agent 主循环完整流程
 ```

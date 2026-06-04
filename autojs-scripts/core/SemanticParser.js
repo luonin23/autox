@@ -48,10 +48,31 @@ function extractContactName(text) {
     for (let i = 0; i < patterns.length; i++) {
         const m = text.match(patterns[i]);
         if (m && m[1]) {
-            const name = m[1].trim();
+            let name = m[1].trim();
             // 过滤掉常见非人名词
             if (name.length > 0 && name.length <= 20) {
-                return name;
+                // 如果匹配结果包含了应用名（如"张三发微信"），截断到应用名之前
+                for (let app in APP_ALIASES) {
+                    const aliases = APP_ALIASES[app];
+                    for (let j = 0; j < aliases.length; j++) {
+                        const alias = aliases[j];
+                        const idx = name.indexOf(alias);
+                        if (idx > 0) {
+                            name = name.substring(0, idx).trim();
+                        }
+                    }
+                }
+                // 去掉末尾残留的动作词（如"张三发" → "张三"）
+                const actionSuffixes = ["发", "发送", "说", "讲", "聊", "打"];
+                for (let k = 0; k < actionSuffixes.length; k++) {
+                    const suffix = actionSuffixes[k];
+                    if (name.endsWith(suffix)) {
+                        name = name.substring(0, name.length - suffix.length).trim();
+                    }
+                }
+                if (name.length > 0) {
+                    return name;
+                }
             }
         }
     }
@@ -127,7 +148,21 @@ function parse(instruction) {
     // === 1. 发消息 ===
     const contact = extractContactName(text);
     const app = extractAppName(text) || "微信";
-    const content = extractMessageContent(text);
+    let content = extractMessageContent(text);
+
+    // 清理内容中残留的应用名+动作词前缀（如"微信说晚上吃饭" → "晚上吃饭"）
+    if (content && app) {
+        const appAliases = APP_ALIASES[app] || [app];
+        for (let i = 0; i < appAliases.length; i++) {
+            const alias = appAliases[i];
+            // 匹配 "微信说..."、"微信发..."、"钉钉说..." 等前缀
+            const prefixRe = new RegExp("^" + alias + "[\\s]*(?:说|讲|发|发送)");
+            if (prefixRe.test(content)) {
+                content = content.replace(prefixRe, "").trim();
+                break;
+            }
+        }
+    }
 
     if (contact && content) {
         return {
