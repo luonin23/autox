@@ -203,7 +203,7 @@ function generateInline(instruction, intention, planSteps) {
         "    var Logger = require('./core/Logger.js');\n" +
         "    var PLAN_STEPS = " + JSON.stringify(planSteps) + ";\n" +
         "    StopHelper.setup();\n" +
-        "    Logger.taskStart('inline', '" + instruction.replace(/'/g, "\\'") + "', null);\n" +
+        "    Logger.taskStart('inline', " + JSON.stringify(instruction) + ", null);\n" +
         "    for (var i = 0; i < PLAN_STEPS.length; i++) {\n" +
         "        if (StopHelper.check()) break;\n" +
         "        var s = PLAN_STEPS[i];\n" +

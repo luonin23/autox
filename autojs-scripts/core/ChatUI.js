@@ -207,8 +207,6 @@ function showChatUI() {
 
     // ===================== 状态变量 =====================
     let currentTab = "chat";
-    let lastGeneratedScript = "";
-    let lastGeneratedFilename = "";
 
     // ===================== 配置页初始化 =====================
     if (current.provider === "deepseek") {
@@ -382,8 +380,8 @@ function showChatUI() {
      * 添加带按钮的助手响应
      */
     function addAssistantResponseWithActions(intention, planSteps, scriptContent) {
-        lastGeneratedScript = scriptContent;
-        lastGeneratedFilename = "script_" + Date.now() + ".js";
+        const thisScript = scriptContent;
+        const thisFilename = "script_" + Date.now() + ".js";
 
         const intentStr = JSON.stringify(intention, null, 2)
             .replace(/&/g, "&amp;")
@@ -411,7 +409,7 @@ function showChatUI() {
 
         addAssistantMessage(html);
 
-        // 添加操作按钮行
+        // 添加操作按钮行（脚本内容通过闭包绑定到按钮，避免共享变量竞态）
         ui.run(function () {
             const container = ui.messageList;
             const row = new android.widget.LinearLayout(context);
@@ -453,7 +451,7 @@ function showChatUI() {
                     threads.start(function () {
                         try {
                             toastLog("开始执行脚本...");
-                            engines.execScript("fold7_generated", lastGeneratedScript);
+                            engines.execScript("fold7_generated", thisScript);
                         } catch (e) {
                             toastLog("执行失败: " + e.message);
                         }
@@ -465,7 +463,7 @@ function showChatUI() {
                 onClick: function () {
                     threads.start(function () {
                         try {
-                            const path = saveScriptToFile(lastGeneratedFilename, lastGeneratedScript);
+                            const path = saveScriptToFile(thisFilename, thisScript);
                             ui.run(function () {
                                 toastLog("脚本已保存: " + path);
                             });
@@ -605,36 +603,31 @@ function showChatUI() {
             return;
         }
 
-        const configContent =
-            'module.exports = {\n' +
-            '    provider: "' + provider + '",\n' +
-            '\n' +
-            '    kimi: {\n' +
-            '        apiKey: "' + kimiApiKey + '",\n' +
-            '        model: "' + kimiModel + '",\n' +
-            '        url: "https://api.moonshot.cn/v1/chat/completions",\n' +
-            '    },\n' +
-            '\n' +
-            '    deepseek: {\n' +
-            '        apiKey: "' + deepseekApiKey + '",\n' +
-            '        model: "' + deepseekModel + '",\n' +
-            '        url: "https://api.deepseek.com/v1/chat/completions",\n' +
-            '    },\n' +
-            '\n' +
-            '    local: {\n' +
-            '        apiKey: "",\n' +
-            '        model: "' + localModel + '",\n' +
-            '        url: "' + localUrl + '",\n' +
-            '    },\n' +
-            '\n' +
-            '    maxSteps: ' + maxSteps + ',\n' +
-            '\n' +
-            '    delay: {\n' +
-            '        min: 500,\n' +
-            '        max: 2000,\n' +
-            '        wechatMin: 3000,\n' +
-            '    },\n' +
-            '};\n';
+        const configObj = {
+            provider: provider,
+            kimi: {
+                apiKey: kimiApiKey,
+                model: kimiModel,
+                url: "https://api.moonshot.cn/v1/chat/completions",
+            },
+            deepseek: {
+                apiKey: deepseekApiKey,
+                model: deepseekModel,
+                url: "https://api.deepseek.com/v1/chat/completions",
+            },
+            local: {
+                apiKey: "",
+                model: localModel,
+                url: localUrl,
+            },
+            maxSteps: maxSteps,
+            delay: {
+                min: 500,
+                max: 2000,
+                wechatMin: 3000,
+            },
+        };
+        const configContent = 'module.exports = ' + JSON.stringify(configObj, null, 4) + ';\n';
 
         try {
             const configPath = files.path("/sdcard/AutoX/fold7-agent/autojs-scripts/config.js");

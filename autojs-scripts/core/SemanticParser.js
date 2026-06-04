@@ -155,8 +155,10 @@ function parse(instruction) {
         const appAliases = APP_ALIASES[app] || [app];
         for (let i = 0; i < appAliases.length; i++) {
             const alias = appAliases[i];
+            // 转义正则元字符，防止 alias 中的特殊字符导致异常
+            const escapedAlias = alias.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
             // 匹配 "微信说..."、"微信发..."、"钉钉说..." 等前缀
-            const prefixRe = new RegExp("^" + alias + "[\\s]*(?:说|讲|发|发送)");
+            const prefixRe = new RegExp("^" + escapedAlias + "[\\s]*(?:说|讲|发|发送)");
             if (prefixRe.test(content)) {
                 content = content.replace(prefixRe, "").trim();
                 break;
