@@ -109,6 +109,27 @@ const Logger = (function () {
     }
 
     /**
+     * 清理旧日志（保留最近 30 天，防止日志无限增长）
+     */
+    function cleanOldLogs() {
+        try {
+            if (!files.exists(LOG_FILE)) return;
+            const content = files.read(LOG_FILE);
+            const lines = content.trim().split("\n").filter(function (l) {
+                return l.trim().length > 0;
+            });
+            const maxLines = 5000; // 最多保留 5000 条记录
+            if (lines.length <= maxLines) return;
+
+            const keepLines = lines.slice(-maxLines);
+            files.write(LOG_FILE, keepLines.join("\n") + "\n");
+            log("📝 日志已清理，保留最近 " + keepLines.length + " 条记录");
+        } catch (e) {
+            log("⚠️ 日志清理失败:", e.message);
+        }
+    }
+
+    /**
      * 获取今日统计
      */
     function todayStats() {
@@ -134,6 +155,7 @@ const Logger = (function () {
         errorLog: errorLog,
         readRecent: readRecent,
         todayStats: todayStats,
+        cleanOldLogs: cleanOldLogs,
     };
 })();
 

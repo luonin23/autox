@@ -224,8 +224,10 @@ function runAgent(instruction) {
         Logger.taskEnd("agent", false, "任务中断", step);
     }
 
-    // 自动清理过期截图
+    // 自动清理过期截图和日志
     try { ScreenshotCleaner.clean(); } catch (e) { /* ignore */ }
+    try { Logger.cleanOldLogs(); } catch (e) { /* ignore */ }
+    try { StopHelper.teardown(); } catch (e) { /* ignore */ }
 }
 
 // ===================== 快速任务（不经过模型）=====================

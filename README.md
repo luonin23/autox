@@ -32,22 +32,14 @@ fold7-agent/
 │   └── install-autox.sh         # AutoX.js APK 自动安装
 ├── autojs-scripts/              # AutoX.js 自动化脚本
 │   ├── core/
-│   │   ├── ModelClient.js       # 模型 API 封装（Kimi / Local）
+│   │   ├── ModelClient.js       # 模型 API 封装（Kimi / DeepSeek / Local）
 │   │   ├── UIAutomator.js       # 无障碍操作封装
 │   │   ├── Logger.js            # 📊 执行日志与统计
 │   │   ├── ConfigUI.js          # 🎛️ 可视化配置页面
 │   │   ├── StopHelper.js        # ⏹️ 统一停止控制（音量上键）
-│   │   └── ScreenshotCleaner.js # 🧹 截图自动清理
-│   ├── tasks/
-│   │   ├── WeChatSend.js        # 微信发消息（多策略回退）
-│   │   ├── ClockIn.js           # 通用定时打卡
-│   │   ├── DingTalk.js          # 钉钉专用打卡
-│   │   ├── SystemSettings.js    # 系统设置（WiFi/亮度等）
-│   │   ├── Camera.js            # 📷 相机拍照
-│   │   ├── Taobao.js            # 🛒 淘宝搜索
-│   │   ├── Alipay.js            # 💳 支付宝付款码/扫一扫/蚂蚁森林
-│   │   ├── Navigation.js        # 🗺️ 高德/百度地图导航
-│   │   └── Workflow.js          # 📋 JSON 工作流编排
+│   │   ├── ScreenshotCleaner.js # 🧹 截图自动清理
+│   │   ├── SemanticParser.js    # 🔍 自然语言语义解析器
+│   │   └── TaskPlanner.js       # 📝 任务规划器（意图→步骤序列）
 │   ├── tasks/
 │   │   ├── WeChatSend.js        # 微信发消息（多策略回退）
 │   │   ├── ClockIn.js           # 通用定时打卡
@@ -60,7 +52,10 @@ fold7-agent/
 │   │   └── Workflow.js          # 📋 JSON 工作流编排
 │   ├── test/
 │   │   ├── mock.js              # Node.js 模拟环境（带屏幕状态机）
-│   │   └── runner.js            # 🧪 自动化测试运行器
+│   │   ├── runner.js            # 🧪 自动化测试运行器
+│   │   ├── semantic-test.js     # 🔍 语义解析器测试
+│   │   ├── test-native.js       # 📱 原生系统 App 模拟器测试
+│   │   └── test-basic.js        # ⚡ 基础 API 验证
 │   ├── config.template.js       # 配置模板
 │   ├── config.js                # 用户配置（含 API Key，不提交 Git）
 │   ├── history.js               # 📜 执行历史查看器（AutoX.js UI）

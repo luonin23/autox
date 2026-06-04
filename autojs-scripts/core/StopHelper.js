@@ -5,6 +5,7 @@
 
 let _STOPPED = false;
 let _LISTENING = false;
+let _KEY_LISTENER = null;
 
 /**
  * 注册音量上键监听（只需调用一次）
@@ -14,16 +15,33 @@ function setup() {
     if (typeof events === "undefined") return;
     try {
         events.observeKey();
-        events.onKeyDown("volume_up", function () {
+        _KEY_LISTENER = function () {
             toastLog("⏹️ 用户按音量上键，正在停止...");
             _STOPPED = true;
             if (typeof engines !== "undefined") {
                 engines.stopAll();
             }
-        });
+        };
+        events.onKeyDown("volume_up", _KEY_LISTENER);
         _LISTENING = true;
     } catch (e) {
         log("⚠️ 音量键监听设置失败:", e.message);
+    }
+}
+
+/**
+ * 移除音量键监听（防止内存泄漏）
+ */
+function teardown() {
+    if (!_LISTENING || typeof events === "undefined") return;
+    try {
+        if (_KEY_LISTENER) {
+            events.removeAllKeyDownListeners("volume_up");
+            _KEY_LISTENER = null;
+        }
+        _LISTENING = false;
+    } catch (e) {
+        log("⚠️ 音量键监听移除失败:", e.message);
     }
 }
 
@@ -81,6 +99,7 @@ function reset() {
 
 module.exports = {
     setup: setup,
+    teardown: teardown,
     showHint: showHint,
     isStopped: isStopped,
     throwIfStopped: throwIfStopped,
