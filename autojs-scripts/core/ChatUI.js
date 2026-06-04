@@ -121,26 +121,32 @@ function showChatUI() {
                         <vertical>
                             <text text="模型配置" textSize="20sp" textColor="#222222" gravity="center" marginBottom="16"/>
 
-                            <text text="模型提供商" textSize="14sp" textColor="#666666"/>
-                            <spinner id="provider" entries="Kimi|DeepSeek|本地" marginBottom="12"/>
+                            <horizontal gravity="center" marginBottom="12">
+                                <button id="tabCfgKimi" text="Kimi" w="90" marginRight="4"/>
+                                <button id="tabCfgDeepSeek" text="DeepSeek" w="90" marginRight="4"/>
+                                <button id="tabCfgLocal" text="本地" w="90"/>
+                            </horizontal>
 
-                            <text text="Kimi API Key" textSize="14sp" textColor="#666666"/>
-                            <input id="kimiApiKey" text="" hint="sk-xxxxxxxx" inputType="textPassword" marginBottom="8"/>
+                            <vertical id="cfgPageKimi" visibility="visible">
+                                <text text="Kimi API Key" textSize="14sp" textColor="#666666"/>
+                                <input id="kimiApiKey" text="" hint="sk-xxxxxxxx" inputType="textPassword" marginBottom="8"/>
+                                <text text="Kimi 模型" textSize="14sp" textColor="#666666"/>
+                                <input id="kimiModel" text="" hint="kimi-k2-6" marginBottom="12"/>
+                            </vertical>
 
-                            <text text="Kimi 模型" textSize="14sp" textColor="#666666"/>
-                            <input id="kimiModel" text="" hint="kimi-k2-6" marginBottom="12"/>
+                            <vertical id="cfgPageDeepSeek" visibility="gone">
+                                <text text="DeepSeek API Key" textSize="14sp" textColor="#666666"/>
+                                <input id="deepseekApiKey" text="" hint="sk-xxxxxxxx" inputType="textPassword" marginBottom="8"/>
+                                <text text="DeepSeek 模型" textSize="14sp" textColor="#666666"/>
+                                <input id="deepseekModel" text="" hint="deepseek-chat" marginBottom="12"/>
+                            </vertical>
 
-                            <text text="DeepSeek API Key" textSize="14sp" textColor="#666666"/>
-                            <input id="deepseekApiKey" text="" hint="sk-xxxxxxxx" inputType="textPassword" marginBottom="8"/>
-
-                            <text text="DeepSeek 模型" textSize="14sp" textColor="#666666"/>
-                            <input id="deepseekModel" text="" hint="deepseek-chat" marginBottom="12"/>
-
-                            <text text="本地模型地址" textSize="14sp" textColor="#666666"/>
-                            <input id="localUrl" text="" hint="http://127.0.0.1:8080/v1/chat/completions" marginBottom="8"/>
-
-                            <text text="本地模型名" textSize="14sp" textColor="#666666"/>
-                            <input id="localModel" text="" hint="local" marginBottom="12"/>
+                            <vertical id="cfgPageLocal" visibility="gone">
+                                <text text="本地模型地址" textSize="14sp" textColor="#666666"/>
+                                <input id="localUrl" text="" hint="http://127.0.0.1:8080/v1/chat/completions" marginBottom="8"/>
+                                <text text="本地模型名" textSize="14sp" textColor="#666666"/>
+                                <input id="localModel" text="" hint="local" marginBottom="12"/>
+                            </vertical>
 
                             <text text="最大执行步数" textSize="14sp" textColor="#666666"/>
                             <input id="maxSteps" text="" hint="15" inputType="number" marginBottom="16"/>
@@ -218,13 +224,26 @@ function showChatUI() {
     ui.localModel.setText(current.local.model || "local");
     ui.maxSteps.setText(String(current.maxSteps || 15));
 
-    if (current.provider === "deepseek") {
-        ui.provider.setSelection(1);
-    } else if (current.provider === "local") {
-        ui.provider.setSelection(2);
-    } else {
-        ui.provider.setSelection(0);
+    var cfgProvider = current.provider || "kimi";
+
+    function switchCfgTab(provider) {
+        cfgProvider = provider;
+        ui.cfgPageKimi.setVisibility(provider === "kimi" ? android.view.View.VISIBLE : android.view.View.GONE);
+        ui.cfgPageDeepSeek.setVisibility(provider === "deepseek" ? android.view.View.VISIBLE : android.view.View.GONE);
+        ui.cfgPageLocal.setVisibility(provider === "local" ? android.view.View.VISIBLE : android.view.View.GONE);
+        ui.tabCfgKimi.setBackgroundColor(colors.parseColor(provider === "kimi" ? "#1976d2" : "#f0f0f0"));
+        ui.tabCfgKimi.setTextColor(colors.parseColor(provider === "kimi" ? "#ffffff" : "#333333"));
+        ui.tabCfgDeepSeek.setBackgroundColor(colors.parseColor(provider === "deepseek" ? "#1976d2" : "#f0f0f0"));
+        ui.tabCfgDeepSeek.setTextColor(colors.parseColor(provider === "deepseek" ? "#ffffff" : "#333333"));
+        ui.tabCfgLocal.setBackgroundColor(colors.parseColor(provider === "local" ? "#1976d2" : "#f0f0f0"));
+        ui.tabCfgLocal.setTextColor(colors.parseColor(provider === "local" ? "#ffffff" : "#333333"));
     }
+
+    ui.tabCfgKimi.click(function () { switchCfgTab("kimi"); });
+    ui.tabCfgDeepSeek.click(function () { switchCfgTab("deepseek"); });
+    ui.tabCfgLocal.click(function () { switchCfgTab("local"); });
+
+    switchCfgTab(cfgProvider);
     updateConfigStatus();
 
     function updateConfigStatus() {
@@ -534,21 +553,27 @@ function showChatUI() {
 
     // ===================== 配置页：测试连接 =====================
     ui.btnTest.click(function () {
-        const pos = ui.provider.getSelectedItemPosition();
-        const provider = pos === 0 ? "kimi" : (pos === 1 ? "deepseek" : "local");
-        const apiKey = provider === "kimi"
+        var provider = cfgProvider;
+        var apiKey = provider === "kimi"
             ? String(ui.kimiApiKey.getText() || "").trim()
             : (provider === "deepseek" ? String(ui.deepseekApiKey.getText() || "").trim() : "");
-        const url = provider === "kimi"
+        var url = provider === "kimi"
             ? "https://api.moonshot.cn/v1/chat/completions"
             : (provider === "deepseek"
                 ? "https://api.deepseek.com/v1/chat/completions"
                 : String(ui.localUrl.getText() || "http://127.0.0.1:8080/v1/chat/completions").trim());
 
+        if ((provider === "kimi" || provider === "deepseek") && apiKey.length < 10) {
+            ui.configStatus.setText("API Key 不能为空");
+            ui.configStatus.setTextColor(colors.parseColor("#e74c3c"));
+            return;
+        }
+
         ui.configStatus.setText("正在测试连接...");
+        ui.configStatus.setTextColor(colors.parseColor("#666666"));
         threads.start(function () {
             try {
-                let res;
+                var res;
                 if (provider === "kimi") {
                     res = http.postJson(url, {
                         model: "kimi-k2-6",
@@ -572,11 +597,12 @@ function showChatUI() {
                 }
 
                 ui.run(function () {
-                    if (res.statusCode >= 200 && res.statusCode < 300) {
-                        ui.configStatus.setText("连接成功 (" + res.statusCode + ")");
+                    var statusCode = res ? res.statusCode : 0;
+                    if (statusCode >= 200 && statusCode < 300) {
+                        ui.configStatus.setText("连接成功 (" + statusCode + ")");
                         ui.configStatus.setTextColor(colors.parseColor("#4caf50"));
                     } else {
-                        ui.configStatus.setText("连接失败: HTTP " + res.statusCode);
+                        ui.configStatus.setText("连接失败: HTTP " + statusCode);
                         ui.configStatus.setTextColor(colors.parseColor("#e74c3c"));
                     }
                 });
@@ -591,15 +617,14 @@ function showChatUI() {
 
     // ===================== 配置页：保存配置 =====================
     ui.btnSaveConfig.click(function () {
-        const pos = ui.provider.getSelectedItemPosition();
-        const provider = pos === 0 ? "kimi" : (pos === 1 ? "deepseek" : "local");
-        const kimiApiKey = String(ui.kimiApiKey.getText() || "").trim();
-        const kimiModel = String(ui.kimiModel.getText() || "kimi-k2-6").trim();
-        const deepseekApiKey = String(ui.deepseekApiKey.getText() || "").trim();
-        const deepseekModel = String(ui.deepseekModel.getText() || "deepseek-chat").trim();
-        const localUrl = String(ui.localUrl.getText() || "http://127.0.0.1:8080/v1/chat/completions").trim();
-        const localModel = String(ui.localModel.getText() || "local").trim();
-        const maxSteps = parseInt(String(ui.maxSteps.getText() || "15")) || 15;
+        var provider = cfgProvider;
+        var kimiApiKey = String(ui.kimiApiKey.getText() || "").trim();
+        var kimiModel = String(ui.kimiModel.getText() || "kimi-k2-6").trim();
+        var deepseekApiKey = String(ui.deepseekApiKey.getText() || "").trim();
+        var deepseekModel = String(ui.deepseekModel.getText() || "deepseek-chat").trim();
+        var localUrl = String(ui.localUrl.getText() || "http://127.0.0.1:8080/v1/chat/completions").trim();
+        var localModel = String(ui.localModel.getText() || "local").trim();
+        var maxSteps = parseInt(String(ui.maxSteps.getText() || "15")) || 15;
 
         if (provider === "kimi" && kimiApiKey.length < 10) {
             ui.configStatus.setText("Kimi API Key 不能为空");
@@ -612,7 +637,7 @@ function showChatUI() {
             return;
         }
 
-        const configObj = {
+        var configObj = {
             provider: provider,
             kimi: {
                 apiKey: kimiApiKey,
@@ -636,10 +661,10 @@ function showChatUI() {
                 wechatMin: 3000,
             },
         };
-        const configContent = 'module.exports = ' + JSON.stringify(configObj, null, 4) + ';\n';
+        var configContent = 'module.exports = ' + JSON.stringify(configObj, null, 4) + ';\n';
 
         try {
-            const configPath = files.path("/sdcard/AutoX/fold7-agent/autojs-scripts/config.js");
+            var configPath = files.path("/sdcard/AutoX/fold7-agent/autojs-scripts/config.js");
             files.createWithDirs(configPath);
             files.write(configPath, configContent);
             ui.configStatus.setText("配置已保存");
