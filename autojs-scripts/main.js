@@ -9,6 +9,7 @@
  * 5. 工作流文件：node main.js --workflowFile=../workflows/dingtalk-clockin.json --var_button="上班打卡"
  * 6. Node.js 模拟测试：node -r ./test/mock.js main.js --instruction="打开设置"
  */
+"ui";
 
 // === 模拟环境检测 ===
 if (typeof device === "undefined") {
@@ -73,9 +74,8 @@ function _startApp() {
 // 页面加载完成后启动
 if (typeof ui !== "undefined" && ui.post) {
     ui.post(_startApp);
-} else {
-    _startApp();
 }
+_startApp();
 
 // ===================== AccessibilityService 检测 =====================
 function checkAccessibility() {
