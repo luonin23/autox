@@ -209,7 +209,7 @@ function showChatUI() {
     let currentTab = "chat";
 
     // ===================== 配置页初始化 =====================
-    const current = loadConfig();
+    // current 已在上面声明，直接复用
     ui.kimiApiKey.setText(current.kimi.apiKey || "");
     ui.kimiModel.setText(current.kimi.model || "kimi-k2-6");
     ui.deepseekApiKey.setText(current.deepseek.apiKey || "");
