@@ -1,7 +1,7 @@
 /**
- * 模型客户端 — 可插拔（Kimi / 本地 llama.cpp）
+ * 模型客户端 — 可插拔（Kimi / DeepSeek / 本地 llama.cpp）
  *
- * 支持 OpenAI 兼容格式（llama.cpp server --chat-template 已内置）
+ * 支持 OpenAI 兼容格式（Kimi、DeepSeek 和 llama.cpp server 均支持）
  */
 const ModelClient = (function () {
     // ===================== 配置加载 =====================
@@ -15,6 +15,7 @@ const ModelClient = (function () {
         CONFIG = {
             provider: "kimi",
             kimi: { apiKey: "", model: "kimi-k2-6", url: "https://api.moonshot.cn/v1/chat/completions" },
+            deepseek: { apiKey: "", model: "deepseek-chat", url: "https://api.deepseek.com/v1/chat/completions" },
             local: { apiKey: "", model: "local", url: "http://127.0.0.1:8080/v1/chat/completions" },
         };
     }
@@ -59,8 +60,8 @@ const ModelClient = (function () {
         }
         const provider = getProvider();
         const cfg = getCfg();
-        if (provider === "kimi" && (!cfg.apiKey || cfg.apiKey.length < 10)) {
-            throw new Error("Kimi API Key 未配置。请编辑 autojs-scripts/config.js 填入 apiKey");
+        if ((provider === "kimi" || provider === "deepseek") && (!cfg.apiKey || cfg.apiKey.length < 10)) {
+            throw new Error(provider + " API Key 未配置。请编辑 autojs-scripts/config.js 填入 apiKey");
         }
         return true;
     }
@@ -82,7 +83,7 @@ const ModelClient = (function () {
             ? `用户指令：${instruction}\n当前屏幕内容：${screenContext}`
             : `用户指令：${instruction}`;
 
-        // 统一使用 OpenAI 兼容格式（Kimi 和 llama.cpp server 都支持）
+        // 统一使用 OpenAI 兼容格式（Kimi、DeepSeek 和 llama.cpp server 都支持）
         const payload = {
             model: cfg.model,
             messages: [

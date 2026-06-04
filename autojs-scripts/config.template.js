@@ -7,7 +7,7 @@
  * 3. config.js 不会被提交到 Git（已加入 .gitignore）
  */
 module.exports = {
-    // 模型提供商: "kimi" | "local"
+    // 模型提供商：可选 "kimi" | "deepseek" | "local"
     provider: "kimi",
 
     // Kimi (Moonshot) API 配置
@@ -15,6 +15,13 @@ module.exports = {
         apiKey: "", // <-- 填入你的 Moonshot API Key
         model: "kimi-k2-6",
         url: "https://api.moonshot.cn/v1/chat/completions",
+    },
+
+    // DeepSeek API 配置
+    deepseek: {
+        apiKey: "", // <-- 填入你的 DeepSeek API Key
+        model: "deepseek-chat",
+        url: "https://api.deepseek.com/v1/chat/completions",
     },
 
     // 本地 llama.cpp server 配置

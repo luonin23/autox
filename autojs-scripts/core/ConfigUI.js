@@ -18,6 +18,7 @@ function showConfigUI(onSave) {
         current = {
             provider: "kimi",
             kimi: { apiKey: "", model: "kimi-k2-6", url: "" },
+            deepseek: { apiKey: "", model: "deepseek-chat", url: "" },
             local: { apiKey: "", model: "local", url: "" },
             maxSteps: 15,
         };
@@ -28,13 +29,19 @@ function showConfigUI(onSave) {
             <text text="Fold7 Agent 配置" textSize="24sp" textColor="#222" gravity="center" marginBottom="16"/>
 
             <text text="模型提供商" textSize="14sp" textColor="#666"/>
-            <spinner id="provider" entries="Kimi (Moonshot)|本地 llama.cpp" marginBottom="12"/>
+            <spinner id="provider" entries="Kimi (Moonshot)|DeepSeek|本地 llama.cpp" marginBottom="12"/>
 
             <text text="Kimi API Key" textSize="14sp" textColor="#666"/>
             <input id="kimiApiKey" text="{{current.kimi.apiKey}}" hint="sk-xxxxxxxx" inputType="textPassword" marginBottom="8"/>
 
             <text text="Kimi 模型" textSize="14sp" textColor="#666"/>
             <input id="kimiModel" text="{{current.kimi.model || 'kimi-k2-6'}}" hint="kimi-k2-6" marginBottom="12"/>
+
+            <text text="DeepSeek API Key" textSize="14sp" textColor="#666"/>
+            <input id="deepseekApiKey" text="{{current.deepseek.apiKey}}" hint="sk-xxxxxxxx" inputType="textPassword" marginBottom="8"/>
+
+            <text text="DeepSeek 模型" textSize="14sp" textColor="#666"/>
+            <input id="deepseekModel" text="{{current.deepseek.model || 'deepseek-chat'}}" hint="deepseek-chat" marginBottom="12"/>
 
             <text text="本地模型地址" textSize="14sp" textColor="#666"/>
             <input id="localUrl" text="{{current.local.url}}" hint="http://127.0.0.1:8080/v1/chat/completions" marginBottom="8"/>
@@ -58,18 +65,25 @@ function showConfigUI(onSave) {
     ui.statusBarColor("#ffffff");
 
     // 设置当前选中项
-    if (current.provider === "local") {
+    if (current.provider === "deepseek") {
         ui.provider.setSelection(1);
+    } else if (current.provider === "local") {
+        ui.provider.setSelection(2);
     } else {
         ui.provider.setSelection(0);
     }
 
     ui.btnTest.click(function () {
-        const provider = ui.provider.getSelectedItemPosition() === 0 ? "kimi" : "local";
-        const apiKey = String(ui.kimiApiKey.getText() || "").trim();
+        const pos = ui.provider.getSelectedItemPosition();
+        const provider = pos === 0 ? "kimi" : (pos === 1 ? "deepseek" : "local");
+        const apiKey = provider === "kimi"
+            ? String(ui.kimiApiKey.getText() || "").trim()
+            : (provider === "deepseek" ? String(ui.deepseekApiKey.getText() || "").trim() : "");
         const url = provider === "kimi"
             ? "https://api.moonshot.cn/v1/chat/completions"
-            : String(ui.localUrl.getText() || "http://127.0.0.1:8080/v1/chat/completions").trim();
+            : (provider === "deepseek"
+                ? "https://api.deepseek.com/v1/chat/completions"
+                : String(ui.localUrl.getText() || "http://127.0.0.1:8080/v1/chat/completions").trim());
 
         ui.status.setText("🔄 正在测试连接...");
         threads.start(function () {
@@ -79,6 +93,16 @@ function showConfigUI(onSave) {
                     // 测试 Kimi：发送最小请求
                     res = http.postJson(url, {
                         model: "kimi-k2-6",
+                        messages: [{ role: "user", content: "hi" }],
+                        max_tokens: 1,
+                    }, {
+                        headers: { "Authorization": "Bearer " + apiKey, "Content-Type": "application/json" },
+                        timeout: 15000,
+                    });
+                } else if (provider === "deepseek") {
+                    // 测试 DeepSeek：发送最小请求
+                    res = http.postJson(url, {
+                        model: "deepseek-chat",
                         messages: [{ role: "user", content: "hi" }],
                         max_tokens: 1,
                     }, {
@@ -102,15 +126,22 @@ function showConfigUI(onSave) {
     });
 
     ui.btnSave.click(function () {
-        const provider = ui.provider.getSelectedItemPosition() === 0 ? "kimi" : "local";
+        const pos = ui.provider.getSelectedItemPosition();
+        const provider = pos === 0 ? "kimi" : (pos === 1 ? "deepseek" : "local");
         const kimiApiKey = String(ui.kimiApiKey.getText() || "").trim();
         const kimiModel = String(ui.kimiModel.getText() || "kimi-k2-6").trim();
+        const deepseekApiKey = String(ui.deepseekApiKey.getText() || "").trim();
+        const deepseekModel = String(ui.deepseekModel.getText() || "deepseek-chat").trim();
         const localUrl = String(ui.localUrl.getText() || "http://127.0.0.1:8080/v1/chat/completions").trim();
         const localModel = String(ui.localModel.getText() || "local").trim();
         const maxSteps = parseInt(String(ui.maxSteps.getText() || "15")) || 15;
 
         if (provider === "kimi" && kimiApiKey.length < 10) {
             ui.status.setText("❌ Kimi API Key 不能为空");
+            return;
+        }
+        if (provider === "deepseek" && deepseekApiKey.length < 10) {
+            ui.status.setText("❌ DeepSeek API Key 不能为空");
             return;
         }
 
@@ -122,6 +153,12 @@ function showConfigUI(onSave) {
             '        apiKey: "' + kimiApiKey + '",\n' +
             '        model: "' + kimiModel + '",\n' +
             '        url: "https://api.moonshot.cn/v1/chat/completions",\n' +
+            '    },\n' +
+            '\n' +
+            '    deepseek: {\n' +
+            '        apiKey: "' + deepseekApiKey + '",\n' +
+            '        model: "' + deepseekModel + '",\n' +
+            '        url: "https://api.deepseek.com/v1/chat/completions",\n' +
             '    },\n' +
             '\n' +
             '    local: {\n' +
