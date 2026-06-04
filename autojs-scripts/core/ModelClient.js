@@ -193,31 +193,51 @@ const ModelClient = (function () {
         validateConfig();
 
         const cfg = getCfg();
+        const format = CONFIG.format || "openai";
         const userContent = screenContext
             ? `用户指令：${instruction}\n当前屏幕内容：${screenContext}`
             : `用户指令：${instruction}`;
 
-        // 统一使用 OpenAI 兼容格式（Kimi、DeepSeek 和 llama.cpp server 都支持）
-        const payload = {
-            model: cfg.model,
-            messages: [
-                { role: "system", content: SYSTEM_PROMPT },
-                { role: "user", content: userContent },
-            ],
-            temperature: 0.3,
-            max_tokens: 1024,
-        };
+        var payload, headers, apiUrl;
+        const baseUrl = (cfg.baseUrl || "").replace(/\/$/, "");
 
-        const headers = {
-            "Content-Type": "application/json",
-        };
-        if (cfg.apiKey) {
-            headers["Authorization"] = "Bearer " + cfg.apiKey;
+        if (format === "anthropic") {
+            // Anthropic 原生格式
+            apiUrl = baseUrl + "/messages";
+            headers = {
+                "Content-Type": "application/json",
+                "x-api-key": cfg.apiKey,
+                "anthropic-version": "2023-06-01",
+            };
+            payload = {
+                model: cfg.model,
+                max_tokens: 1024,
+                system: SYSTEM_PROMPT,
+                messages: [
+                    { role: "user", content: userContent },
+                ],
+            };
+        } else {
+            // OpenAI 兼容格式（默认）
+            apiUrl = baseUrl + "/chat/completions";
+            headers = {
+                "Content-Type": "application/json",
+            };
+            if (cfg.apiKey) {
+                headers["Authorization"] = "Bearer " + cfg.apiKey;
+            }
+            payload = {
+                model: cfg.model,
+                messages: [
+                    { role: "system", content: SYSTEM_PROMPT },
+                    { role: "user", content: userContent },
+                ],
+                temperature: 0.3,
+                max_tokens: 1024,
+            };
         }
 
         toastLog("🧠 正在思考...");
-        // 设置 30 秒超时，防止网络卡住导致脚本无法退出
-        var apiUrl = (cfg.baseUrl || "").replace(/\/$/, "") + "/chat/completions";
         const res = http.postJson(apiUrl, payload, {
             headers: headers,
             timeout: 30000,
@@ -236,8 +256,10 @@ const ModelClient = (function () {
         const json = res.body.json();
         let rawText = "";
 
-        // 统一解析 OpenAI 格式
-        if (json.choices && json.choices[0] && json.choices[0].message) {
+        // 根据格式解析响应
+        if (format === "anthropic" && json.content && json.content[0]) {
+            rawText = json.content[0].text || "";
+        } else if (json.choices && json.choices[0] && json.choices[0].message) {
             rawText = json.choices[0].message.content || "";
         } else if (json.content) {
             rawText = json.content;

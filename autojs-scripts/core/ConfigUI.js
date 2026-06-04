@@ -18,7 +18,8 @@ function showConfigUI(onSave) {
     } catch (e) {
         current = {
             provider: "kimi",
-            kimi: { baseUrl: "https://api.moonshot.cn/v1", apiKey: "", model: "kimi-k2-6" },
+            format: "anthropic",
+            kimi: { baseUrl: "https://api.kimi.com/coding", apiKey: "", model: "kimi-for-coding" },
             deepseek: { baseUrl: "https://api.deepseek.com/v1", apiKey: "", model: "deepseek-chat" },
             local: { baseUrl: "http://127.0.0.1:8080/v1", apiKey: "", model: "local" },
             maxSteps: 15,
@@ -28,6 +29,9 @@ function showConfigUI(onSave) {
     ui.layout(
         <vertical padding="16">
             <text text="Fold7 Agent 配置" textSize="24sp" textColor="#222222" gravity="center" marginBottom="16"/>
+
+            <text text="API 格式" textSize="14sp" textColor="#666666"/>
+            <spinner id="format" entries="OpenAI 兼容|Anthropic 原生" marginBottom="12"/>
 
             <!-- 提供商选择标签 -->
             <horizontal gravity="center" marginBottom="12">
@@ -84,7 +88,14 @@ function showConfigUI(onSave) {
     var activeProvider = current.provider || "kimi";
 
     // 填充当前配置值
-    ui.kimiBaseUrl.setText(current.kimi.baseUrl || "https://api.moonshot.cn/v1");
+    var currentFormat = current.format || "anthropic";
+    if (currentFormat === "openai") {
+        ui.format.setSelection(0);
+    } else {
+        ui.format.setSelection(1);
+    }
+
+    ui.kimiBaseUrl.setText(current.kimi.baseUrl || "https://api.kimi.com/coding");
     ui.kimiApiKey.setText(current.kimi.apiKey || "");
     ui.kimiModel.setText(current.kimi.model || "kimi-k2-6");
     ui.deepseekBaseUrl.setText(current.deepseek.baseUrl || "https://api.deepseek.com/v1");
@@ -120,37 +131,55 @@ function showConfigUI(onSave) {
     // 测试连接
     ui.btnTest.click(function () {
         ui.status.setText("🔄 正在测试连接...");
+        var format = ui.format.getSelectedItemPosition() === 0 ? "openai" : "anthropic";
         threads.start(function () {
             try {
                 var res;
-                var msg = "";
+                var isAnthropic = format === "anthropic";
                 if (activeProvider === "kimi") {
                     var key = String(ui.kimiApiKey.getText() || "").trim();
-                    var baseUrl = String(ui.kimiBaseUrl.getText() || "https://api.moonshot.cn/v1").trim().replace(/\/$/, "");
+                    var baseUrl = String(ui.kimiBaseUrl.getText() || "https://api.kimi.com/coding").trim().replace(/\/$/, "");
+                    var model = String(ui.kimiModel.getText() || "kimi-for-coding").trim();
                     if (key.length < 10) {
                         ui.status.setText("❌ Kimi API Key 不能为空");
                         return;
                     }
-                    res = http.postJson(baseUrl + "/chat/completions", {
-                        model: "kimi-k2-6",
-                        messages: [{ role: "user", content: "hi" }],
-                        max_tokens: 1,
-                    }, {
-                        headers: {
-                            "Authorization": "Bearer " + key,
-                            "Content-Type": "application/json"
-                        },
-                        timeout: 15000,
-                    });
+                    if (isAnthropic) {
+                        res = http.postJson(baseUrl + "/messages", {
+                            model: model,
+                            max_tokens: 1,
+                            messages: [{ role: "user", content: "hi" }],
+                        }, {
+                            headers: {
+                                "x-api-key": key,
+                                "anthropic-version": "2023-06-01",
+                                "Content-Type": "application/json"
+                            },
+                            timeout: 15000,
+                        });
+                    } else {
+                        res = http.postJson(baseUrl + "/chat/completions", {
+                            model: model,
+                            messages: [{ role: "user", content: "hi" }],
+                            max_tokens: 1,
+                        }, {
+                            headers: {
+                                "Authorization": "Bearer " + key,
+                                "Content-Type": "application/json"
+                            },
+                            timeout: 15000,
+                        });
+                    }
                 } else if (activeProvider === "deepseek") {
                     var key = String(ui.deepseekApiKey.getText() || "").trim();
                     var baseUrl = String(ui.deepseekBaseUrl.getText() || "https://api.deepseek.com/v1").trim().replace(/\/$/, "");
+                    var model = String(ui.deepseekModel.getText() || "deepseek-chat").trim();
                     if (key.length < 10) {
                         ui.status.setText("❌ DeepSeek API Key 不能为空");
                         return;
                     }
                     res = http.postJson(baseUrl + "/chat/completions", {
-                        model: "deepseek-chat",
+                        model: model,
                         messages: [{ role: "user", content: "hi" }],
                         max_tokens: 1,
                     }, {
@@ -162,9 +191,10 @@ function showConfigUI(onSave) {
                     });
                 } else {
                     var baseUrl = String(ui.localBaseUrl.getText() || "http://127.0.0.1:8080/v1").trim().replace(/\/$/, "");
+                    var model = String(ui.localModel.getText() || "local").trim();
                     // 本地模型用简单 POST 测试，即使返回 400/401 也说明服务器在线
                     res = http.postJson(baseUrl + "/chat/completions", {
-                        model: "test",
+                        model: model,
                         messages: [{ role: "user", content: "hi" }],
                         max_tokens: 1,
                     }, { timeout: 5000 });
@@ -184,9 +214,10 @@ function showConfigUI(onSave) {
 
     // 保存配置
     ui.btnSave.click(function () {
-        var kimiBaseUrl = String(ui.kimiBaseUrl.getText() || "https://api.moonshot.cn/v1").trim();
+        var format = ui.format.getSelectedItemPosition() === 0 ? "openai" : "anthropic";
+        var kimiBaseUrl = String(ui.kimiBaseUrl.getText() || "https://api.kimi.com/coding").trim();
         var kimiApiKey = String(ui.kimiApiKey.getText() || "").trim();
-        var kimiModel = String(ui.kimiModel.getText() || "kimi-k2-6").trim();
+        var kimiModel = String(ui.kimiModel.getText() || "kimi-for-coding").trim();
         var deepseekBaseUrl = String(ui.deepseekBaseUrl.getText() || "https://api.deepseek.com/v1").trim();
         var deepseekApiKey = String(ui.deepseekApiKey.getText() || "").trim();
         var deepseekModel = String(ui.deepseekModel.getText() || "deepseek-chat").trim();
@@ -206,6 +237,7 @@ function showConfigUI(onSave) {
         var configContent =
             'module.exports = {\n' +
             '    provider: "' + activeProvider + '",\n' +
+            '    format: "' + format + '",\n' +
             '\n' +
             '    kimi: {\n' +
             '        baseUrl: "' + kimiBaseUrl + '",\n' +

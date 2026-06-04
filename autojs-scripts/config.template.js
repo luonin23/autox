@@ -10,11 +10,14 @@ module.exports = {
     // 模型提供商：可选 "kimi" | "deepseek" | "local"
     provider: "kimi",
 
+    // API 格式："openai"（默认）或 "anthropic"
+    format: "anthropic",
+
     // Kimi (Moonshot) API 配置
     kimi: {
-        baseUrl: "https://api.moonshot.cn/v1",
-        apiKey: "",      // <-- 填入你的 Moonshot API Key
-        model: "kimi-k2-6",
+        baseUrl: "https://api.kimi.com/coding",
+        apiKey: "",      // <-- 填入你的 API Key
+        model: "kimi-for-coding",
     },
 
     // DeepSeek API 配置
@@ -25,7 +28,6 @@ module.exports = {
     },
 
     // 本地 llama.cpp server 配置
-    // llama.cpp 启动时加 --api-key 可设密钥，否则留空
     local: {
         baseUrl: "http://127.0.0.1:8080/v1",
         apiKey: "",
