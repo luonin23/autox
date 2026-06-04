@@ -29,6 +29,27 @@ const Taobao = require("./tasks/Taobao.js");
 const Alipay = require("./tasks/Alipay.js");
 const Navigation = require("./tasks/Navigation.js");
 
+// ===================== 全局停止控制 =====================
+let _STOPPED = false;
+
+function setupStopHandler() {
+    if (typeof events === "undefined") return;
+    try {
+        events.observeKey();
+        events.onKeyDown("volume_up", function () {
+            toastLog("⏹️ 用户按音量上键，正在停止脚本...");
+            _STOPPED = true;
+            // 停止所有脚本（包括后台运行的）
+            if (typeof engines !== "undefined") {
+                engines.stopAll();
+            }
+        });
+        toast("🔊 按【音量上键】可随时停止脚本");
+    } catch (e) {
+        log("⚠️ 音量键监听设置失败:", e.message);
+    }
+}
+
 // 加载用户配置
 let CONFIG = null;
 try {
@@ -112,19 +133,28 @@ function runAgent(instruction) {
     let done = false;
     let recoveryCount = 0;
 
-    while (step < maxSteps && !done) {
+    while (step < maxSteps && !done && !_STOPPED) {
         step++;
         log("\n========== 步骤 " + step + " ==========");
+
+        if (_STOPPED) {
+            toastLog("⏹️ 脚本已停止");
+            break;
+        }
 
         try {
             const screenContext = UIAutomator.getScreenContext(1500);
             log("📱 屏幕内容:", screenContext.substring(0, 200) + "...");
+
+            if (_STOPPED) break;
 
             const cmd = ModelClient.callModel(instruction, screenContext);
             if (!cmd || !cmd.action) {
                 log("⚠️ 模型返回无效指令");
                 break;
             }
+
+            if (_STOPPED) break;
 
             Logger.stepLog(step, cmd.action, cmd.target, "ok");
             const shouldContinue = UIAutomator.executeCommand(cmd);
@@ -298,6 +328,9 @@ function runWorkflowFromFile(filePath) {
 
 // ===================== 入口分发 =====================
 function main() {
+    // 注册停止快捷键
+    setupStopHandler();
+
     // 情况 1：工作流文件路径
     if (ARGS.workflowFile) {
         runWorkflowFromFile(ARGS.workflowFile);

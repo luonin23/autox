@@ -101,7 +101,11 @@ const ModelClient = (function () {
         }
 
         toastLog("🧠 正在思考...");
-        const res = http.postJson(cfg.url, payload, { headers: headers });
+        // 设置 30 秒超时，防止网络卡住导致脚本无法退出
+        const res = http.postJson(cfg.url, payload, {
+            headers: headers,
+            timeout: 30000,
+        });
 
         if (res.statusCode !== 200) {
             const errBody = res.body ? res.body.string() : "";
