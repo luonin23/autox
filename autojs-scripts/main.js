@@ -34,7 +34,27 @@ let CONFIG = null;
 try {
     CONFIG = require("./config.js");
 } catch (e) {
-    log("⚠️ 未找到 config.js，使用空配置");
+    log("⚠️ 未找到 config.js");
+    CONFIG = null;
+}
+
+// 如果配置不存在且支持 UI，弹出配置对话框
+if (!CONFIG && typeof ui !== "undefined") {
+    const ConfigUI = require("./core/ConfigUI.js");
+    ConfigUI.show(function () {
+        // 保存后重新加载配置并继续
+        try {
+            CONFIG = require("./config.js");
+            main();
+        } catch (e2) {
+            toastLog("❌ 配置加载失败: " + e2.message);
+        }
+    });
+    // 首次显示 UI 后暂停执行，等待用户保存
+    return;
+}
+
+if (!CONFIG) {
     CONFIG = { maxSteps: 15 };
 }
 

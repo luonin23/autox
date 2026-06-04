@@ -317,6 +317,45 @@ if (typeof global.device === "undefined") {
         },
     };
 
+    // === UI 模块 Mock ===
+    global.ui = {
+        layout: function (xml) {
+            console.log("[MOCK] ui.layout(...)");
+        },
+        statusBarColor: function (color) {
+            console.log("[MOCK] ui.statusBarColor(" + color + ")");
+        },
+        finish: function () {
+            console.log("[MOCK] ui.finish()");
+        },
+        // 动态属性访问
+        __props: {},
+    };
+    // 代理 ui.xxx 访问
+    const uiHandler = {
+        get: function (target, prop) {
+            if (prop in target) return target[prop];
+            if (prop === "__props") return target.__props;
+            // 返回一个模拟的 UI 控件对象
+            if (!target.__props[prop]) {
+                target.__props[prop] = {
+                    getText: () => "",
+                    setText: (t) => console.log("[MOCK] " + prop + ".setText(" + t + ")"),
+                    getSelectedItemPosition: () => 0,
+                    setSelection: (i) => console.log("[MOCK] " + prop + ".setSelection(" + i + ")"),
+                    click: function (fn) {
+                        if (fn) fn();
+                    },
+                    setText: function (t) {
+                        console.log("[MOCK] " + prop + ".setText(" + t + ")");
+                    },
+                };
+            }
+            return target.__props[prop];
+        },
+    };
+    global.ui = new Proxy(global.ui, uiHandler);
+
     // === Mock 环境标志 ===
     global._MOCK_SKIP_VALIDATION = true;
 

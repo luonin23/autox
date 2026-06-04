@@ -34,7 +34,8 @@ fold7-agent/
 │   ├── core/
 │   │   ├── ModelClient.js       # 模型 API 封装（Kimi / Local）
 │   │   ├── UIAutomator.js       # 无障碍操作封装
-│   │   └── Logger.js            # 📊 执行日志与统计
+│   │   ├── Logger.js            # 📊 执行日志与统计
+│   │   └── ConfigUI.js          # 🎛️ 可视化配置页面
 │   ├── tasks/
 │   │   ├── WeChatSend.js        # 微信发消息（多策略回退）
 │   │   ├── ClockIn.js           # 通用定时打卡
@@ -57,7 +58,20 @@ fold7-agent/
 
 ## 快速开始
 
-### 1. 配置（交互式向导 ⭐推荐）
+### 1. 配置
+
+**方式一：手机可视化配置（推荐）**
+
+在 AutoX.js 中直接运行 `main.js`，如果检测到未配置，会自动弹出配置页面：
+
+- 模型提供商：下拉选择 Kimi / 本地
+- Kimi API Key：密码输入框
+- 模型名称、本地服务地址
+- 最大执行步数
+
+填写后点击保存即可。
+
+**方式二：命令行交互向导**
 
 ```bash
 cd autojs-scripts
@@ -65,7 +79,8 @@ bash ../scripts/setup-config.sh
 # 按提示选择模型、填入 API Key
 ```
 
-或手动配置：
+**方式三：手动编辑**
+
 ```bash
 cd autojs-scripts
 cp config.template.js config.js
