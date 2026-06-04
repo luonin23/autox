@@ -20,6 +20,8 @@ const StopHelper = require("./core/StopHelper.js");
 const ModelClient = require("./core/ModelClient.js");
 const UIAutomator = require("./core/UIAutomator.js");
 const Logger = require("./core/Logger.js");
+const SemanticParser = require("./core/SemanticParser.js");
+const TaskPlanner = require("./core/TaskPlanner.js");
 const sendWeChatMessage = require("./tasks/WeChatSend.js");
 const ClockIn = require("./tasks/ClockIn.js");
 const DingTalk = require("./tasks/DingTalk.js");
@@ -108,11 +110,31 @@ function runAgent(instruction) {
     Logger.taskStart("agent", instruction, null);
     toastLog("🚀 开始执行任务: " + instruction);
 
+    // ========== 第 1 步：语义解析 ==========
+    log("🔍 正在解析用户意图...");
+    const intention = SemanticParser.parse(instruction);
+    log("📋 解析结果:", JSON.stringify(intention));
+
+    // ========== 第 2 步：任务规划 ==========
+    log("📝 正在生成执行计划...");
+    let planSteps = TaskPlanner.plan(intention);
+    let usePlanner = planSteps && planSteps.length > 0;
+
+    if (usePlanner) {
+        log("✅ 任务规划器生成 " + planSteps.length + " 个步骤");
+        planSteps.forEach(function (s, i) {
+            log("   步骤 " + (i + 1) + ": [" + s.action + "] " + (s.reason || ""));
+        });
+    } else {
+        log("⚠️ 任务规划器无法处理此指令，回退到模型决策");
+    }
+
     const maxSteps = CONFIG.maxSteps || 15;
     const maxRecoveries = 2;
     let step = 0;
     let done = false;
     let recoveryCount = 0;
+    let planIndex = 0;
 
     while (step < maxSteps && !done && !StopHelper.check()) {
         step++;
@@ -124,15 +146,25 @@ function runAgent(instruction) {
         }
 
         try {
-            const screenContext = UIAutomator.getScreenContext(1500);
-            log("📱 屏幕内容:", screenContext.substring(0, 200) + "...");
+            let cmd = null;
 
-            if (StopHelper.check()) break;
+            if (usePlanner && planIndex < planSteps.length) {
+                // 优先使用规划器步骤
+                cmd = planSteps[planIndex];
+                planIndex++;
+                log("📌 执行规划步骤 [" + planIndex + "/" + planSteps.length + "]: " + cmd.reason);
+            } else {
+                // 规划器步骤已用完，或规划器无法处理，回退到模型
+                const screenContext = UIAutomator.getScreenContext(1500);
+                log("📱 屏幕内容:", screenContext.substring(0, 200) + "...");
 
-            const cmd = ModelClient.callModel(instruction, screenContext);
-            if (!cmd || !cmd.action) {
-                log("⚠️ 模型返回无效指令");
-                break;
+                if (StopHelper.check()) break;
+
+                cmd = ModelClient.callModel(instruction, screenContext);
+                if (!cmd || !cmd.action) {
+                    log("⚠️ 模型返回无效指令");
+                    break;
+                }
             }
 
             if (StopHelper.check()) break;
