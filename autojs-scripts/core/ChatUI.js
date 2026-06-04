@@ -128,6 +128,8 @@ function showChatUI() {
                             </horizontal>
 
                             <vertical id="cfgPageKimi" visibility="visible">
+                                <text text="Kimi Base URL" textSize="14sp" textColor="#666666"/>
+                                <input id="kimiBaseUrl" text="" hint="https://api.moonshot.cn/v1" marginBottom="8"/>
                                 <text text="Kimi API Key" textSize="14sp" textColor="#666666"/>
                                 <input id="kimiApiKey" text="" hint="sk-xxxxxxxx" inputType="textPassword" marginBottom="8"/>
                                 <text text="Kimi 模型" textSize="14sp" textColor="#666666"/>
@@ -135,6 +137,8 @@ function showChatUI() {
                             </vertical>
 
                             <vertical id="cfgPageDeepSeek" visibility="gone">
+                                <text text="DeepSeek Base URL" textSize="14sp" textColor="#666666"/>
+                                <input id="deepseekBaseUrl" text="" hint="https://api.deepseek.com/v1" marginBottom="8"/>
                                 <text text="DeepSeek API Key" textSize="14sp" textColor="#666666"/>
                                 <input id="deepseekApiKey" text="" hint="sk-xxxxxxxx" inputType="textPassword" marginBottom="8"/>
                                 <text text="DeepSeek 模型" textSize="14sp" textColor="#666666"/>
@@ -142,8 +146,8 @@ function showChatUI() {
                             </vertical>
 
                             <vertical id="cfgPageLocal" visibility="gone">
-                                <text text="本地模型地址" textSize="14sp" textColor="#666666"/>
-                                <input id="localUrl" text="" hint="http://127.0.0.1:8080/v1" marginBottom="8"/>
+                                <text text="本地 Base URL" textSize="14sp" textColor="#666666"/>
+                                <input id="localBaseUrl" text="" hint="http://127.0.0.1:8080/v1" marginBottom="8"/>
                                 <text text="本地模型名" textSize="14sp" textColor="#666666"/>
                                 <input id="localModel" text="" hint="local" marginBottom="12"/>
                             </vertical>
@@ -216,11 +220,13 @@ function showChatUI() {
 
     // ===================== 配置页初始化 =====================
     // current 已在上面声明，直接复用
+    ui.kimiBaseUrl.setText(current.kimi.baseUrl || "https://api.moonshot.cn/v1");
     ui.kimiApiKey.setText(current.kimi.apiKey || "");
     ui.kimiModel.setText(current.kimi.model || "kimi-k2-6");
+    ui.deepseekBaseUrl.setText(current.deepseek.baseUrl || "https://api.deepseek.com/v1");
     ui.deepseekApiKey.setText(current.deepseek.apiKey || "");
     ui.deepseekModel.setText(current.deepseek.model || "deepseek-chat");
-    ui.localUrl.setText(current.local.baseUrl || "");
+    ui.localBaseUrl.setText(current.local.baseUrl || "http://127.0.0.1:8080/v1");
     ui.localModel.setText(current.local.model || "local");
     ui.maxSteps.setText(String(current.maxSteps || 15));
 
@@ -557,11 +563,14 @@ function showChatUI() {
         var apiKey = provider === "kimi"
             ? String(ui.kimiApiKey.getText() || "").trim()
             : (provider === "deepseek" ? String(ui.deepseekApiKey.getText() || "").trim() : "");
-        var baseUrl = provider === "kimi"
-            ? "https://api.moonshot.cn/v1"
-            : (provider === "deepseek"
-                ? "https://api.deepseek.com/v1"
-                : String(ui.localUrl.getText() || "http://127.0.0.1:8080/v1").trim());
+        var baseUrl;
+        if (provider === "kimi") {
+            baseUrl = String(ui.kimiBaseUrl.getText() || "https://api.moonshot.cn/v1").trim();
+        } else if (provider === "deepseek") {
+            baseUrl = String(ui.deepseekBaseUrl.getText() || "https://api.deepseek.com/v1").trim();
+        } else {
+            baseUrl = String(ui.localBaseUrl.getText() || "http://127.0.0.1:8080/v1").trim();
+        }
         baseUrl = baseUrl.replace(/\/$/, "");
         var apiUrl = baseUrl + "/chat/completions";
 
@@ -620,11 +629,13 @@ function showChatUI() {
     // ===================== 配置页：保存配置 =====================
     ui.btnSaveConfig.click(function () {
         var provider = cfgProvider;
+        var kimiBaseUrl = String(ui.kimiBaseUrl.getText() || "https://api.moonshot.cn/v1").trim();
         var kimiApiKey = String(ui.kimiApiKey.getText() || "").trim();
         var kimiModel = String(ui.kimiModel.getText() || "kimi-k2-6").trim();
+        var deepseekBaseUrl = String(ui.deepseekBaseUrl.getText() || "https://api.deepseek.com/v1").trim();
         var deepseekApiKey = String(ui.deepseekApiKey.getText() || "").trim();
         var deepseekModel = String(ui.deepseekModel.getText() || "deepseek-chat").trim();
-        var localBaseUrl = String(ui.localUrl.getText() || "http://127.0.0.1:8080/v1").trim();
+        var localBaseUrl = String(ui.localBaseUrl.getText() || "http://127.0.0.1:8080/v1").trim();
         var localModel = String(ui.localModel.getText() || "local").trim();
         var maxSteps = parseInt(String(ui.maxSteps.getText() || "15")) || 15;
 
@@ -642,12 +653,12 @@ function showChatUI() {
         var configObj = {
             provider: provider,
             kimi: {
-                baseUrl: "https://api.moonshot.cn/v1",
+                baseUrl: kimiBaseUrl,
                 apiKey: kimiApiKey,
                 model: kimiModel,
             },
             deepseek: {
-                baseUrl: "https://api.deepseek.com/v1",
+                baseUrl: deepseekBaseUrl,
                 apiKey: deepseekApiKey,
                 model: deepseekModel,
             },

@@ -38,6 +38,8 @@ function showConfigUI(onSave) {
 
             <!-- Kimi 配置页 -->
             <vertical id="pageKimi" visibility="visible">
+                <text text="Kimi Base URL" textSize="14sp" textColor="#666666"/>
+                <input id="kimiBaseUrl" text="" hint="https://api.moonshot.cn/v1" marginBottom="8"/>
                 <text text="Kimi API Key" textSize="14sp" textColor="#666666"/>
                 <input id="kimiApiKey" text="" hint="sk-xxxxxxxx" inputType="textPassword" marginBottom="8"/>
                 <text text="Kimi 模型" textSize="14sp" textColor="#666666"/>
@@ -46,6 +48,8 @@ function showConfigUI(onSave) {
 
             <!-- DeepSeek 配置页 -->
             <vertical id="pageDeepSeek" visibility="gone">
+                <text text="DeepSeek Base URL" textSize="14sp" textColor="#666666"/>
+                <input id="deepseekBaseUrl" text="" hint="https://api.deepseek.com/v1" marginBottom="8"/>
                 <text text="DeepSeek API Key" textSize="14sp" textColor="#666666"/>
                 <input id="deepseekApiKey" text="" hint="sk-xxxxxxxx" inputType="textPassword" marginBottom="8"/>
                 <text text="DeepSeek 模型" textSize="14sp" textColor="#666666"/>
@@ -54,8 +58,8 @@ function showConfigUI(onSave) {
 
             <!-- 本地模型配置页 -->
             <vertical id="pageLocal" visibility="gone">
-                <text text="本地模型地址" textSize="14sp" textColor="#666666"/>
-                <input id="localUrl" text="" hint="http://127.0.0.1:8080/v1" marginBottom="8"/>
+                <text text="本地 Base URL" textSize="14sp" textColor="#666666"/>
+                <input id="localBaseUrl" text="" hint="http://127.0.0.1:8080/v1" marginBottom="8"/>
                 <text text="本地模型名" textSize="14sp" textColor="#666666"/>
                 <input id="localModel" text="" hint="local" marginBottom="12"/>
             </vertical>
@@ -80,11 +84,13 @@ function showConfigUI(onSave) {
     var activeProvider = current.provider || "kimi";
 
     // 填充当前配置值
+    ui.kimiBaseUrl.setText(current.kimi.baseUrl || "https://api.moonshot.cn/v1");
     ui.kimiApiKey.setText(current.kimi.apiKey || "");
     ui.kimiModel.setText(current.kimi.model || "kimi-k2-6");
+    ui.deepseekBaseUrl.setText(current.deepseek.baseUrl || "https://api.deepseek.com/v1");
     ui.deepseekApiKey.setText(current.deepseek.apiKey || "");
     ui.deepseekModel.setText(current.deepseek.model || "deepseek-chat");
-    ui.localUrl.setText(current.local.baseUrl || "");
+    ui.localBaseUrl.setText(current.local.baseUrl || "http://127.0.0.1:8080/v1");
     ui.localModel.setText(current.local.model || "local");
     ui.maxSteps.setText(String(current.maxSteps || 15));
 
@@ -120,7 +126,7 @@ function showConfigUI(onSave) {
                 var msg = "";
                 if (activeProvider === "kimi") {
                     var key = String(ui.kimiApiKey.getText() || "").trim();
-                    var baseUrl = "https://api.moonshot.cn/v1";
+                    var baseUrl = String(ui.kimiBaseUrl.getText() || "https://api.moonshot.cn/v1").trim().replace(/\/$/, "");
                     if (key.length < 10) {
                         ui.status.setText("❌ Kimi API Key 不能为空");
                         return;
@@ -138,7 +144,7 @@ function showConfigUI(onSave) {
                     });
                 } else if (activeProvider === "deepseek") {
                     var key = String(ui.deepseekApiKey.getText() || "").trim();
-                    var baseUrl = "https://api.deepseek.com/v1";
+                    var baseUrl = String(ui.deepseekBaseUrl.getText() || "https://api.deepseek.com/v1").trim().replace(/\/$/, "");
                     if (key.length < 10) {
                         ui.status.setText("❌ DeepSeek API Key 不能为空");
                         return;
@@ -155,8 +161,8 @@ function showConfigUI(onSave) {
                         timeout: 15000,
                     });
                 } else {
-                    var baseUrl = String(ui.localUrl.getText() || "http://127.0.0.1:8080/v1").trim();
-                    res = http.get(baseUrl.replace(/\/$/, "") + "/models", { timeout: 5000 });
+                    var baseUrl = String(ui.localBaseUrl.getText() || "http://127.0.0.1:8080/v1").trim().replace(/\/$/, "");
+                    res = http.get(baseUrl + "/models", { timeout: 5000 });
                 }
 
                 var statusCode = res ? res.statusCode : 0;
@@ -173,11 +179,13 @@ function showConfigUI(onSave) {
 
     // 保存配置
     ui.btnSave.click(function () {
+        var kimiBaseUrl = String(ui.kimiBaseUrl.getText() || "https://api.moonshot.cn/v1").trim();
         var kimiApiKey = String(ui.kimiApiKey.getText() || "").trim();
         var kimiModel = String(ui.kimiModel.getText() || "kimi-k2-6").trim();
+        var deepseekBaseUrl = String(ui.deepseekBaseUrl.getText() || "https://api.deepseek.com/v1").trim();
         var deepseekApiKey = String(ui.deepseekApiKey.getText() || "").trim();
         var deepseekModel = String(ui.deepseekModel.getText() || "deepseek-chat").trim();
-        var localBaseUrl = String(ui.localUrl.getText() || "http://127.0.0.1:8080/v1").trim();
+        var localBaseUrl = String(ui.localBaseUrl.getText() || "http://127.0.0.1:8080/v1").trim();
         var localModel = String(ui.localModel.getText() || "local").trim();
         var maxSteps = parseInt(String(ui.maxSteps.getText() || "15")) || 15;
 
@@ -195,13 +203,13 @@ function showConfigUI(onSave) {
             '    provider: "' + activeProvider + '",\n' +
             '\n' +
             '    kimi: {\n' +
-            '        baseUrl: "https://api.moonshot.cn/v1",\n' +
+            '        baseUrl: "' + kimiBaseUrl + '",\n' +
             '        apiKey: "' + kimiApiKey + '",\n' +
             '        model: "' + kimiModel + '",\n' +
             '    },\n' +
             '\n' +
             '    deepseek: {\n' +
-            '        baseUrl: "https://api.deepseek.com/v1",\n' +
+            '        baseUrl: "' + deepseekBaseUrl + '",\n' +
             '        apiKey: "' + deepseekApiKey + '",\n' +
             '        model: "' + deepseekModel + '",\n' +
             '    },\n' +
