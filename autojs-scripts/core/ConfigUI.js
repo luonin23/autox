@@ -162,7 +162,12 @@ function showConfigUI(onSave) {
                     });
                 } else {
                     var baseUrl = String(ui.localBaseUrl.getText() || "http://127.0.0.1:8080/v1").trim().replace(/\/$/, "");
-                    res = http.get(baseUrl + "/models", { timeout: 5000 });
+                    // 本地模型用简单 POST 测试，即使返回 400/401 也说明服务器在线
+                    res = http.postJson(baseUrl + "/chat/completions", {
+                        model: "test",
+                        messages: [{ role: "user", content: "hi" }],
+                        max_tokens: 1,
+                    }, { timeout: 5000 });
                 }
 
                 var statusCode = res ? res.statusCode : 0;
