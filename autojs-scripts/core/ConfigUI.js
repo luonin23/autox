@@ -32,25 +32,25 @@ function showConfigUI(onSave) {
             <spinner id="provider" entries="Kimi|DeepSeek|本地" marginBottom="12"/>
 
             <text text="Kimi API Key" textSize="14sp" textColor="#666666"/>
-            <input id="kimiApiKey" text="{{current.kimi.apiKey}}" hint="sk-xxxxxxxx" inputType="textPassword" marginBottom="8"/>
+            <input id="kimiApiKey" text="" hint="sk-xxxxxxxx" inputType="textPassword" marginBottom="8"/>
 
             <text text="Kimi 模型" textSize="14sp" textColor="#666666"/>
-            <input id="kimiModel" text="{{current.kimi.model || 'kimi-k2-6'}}" hint="kimi-k2-6" marginBottom="12"/>
+            <input id="kimiModel" text="" hint="kimi-k2-6" marginBottom="12"/>
 
             <text text="DeepSeek API Key" textSize="14sp" textColor="#666666"/>
-            <input id="deepseekApiKey" text="{{current.deepseek.apiKey}}" hint="sk-xxxxxxxx" inputType="textPassword" marginBottom="8"/>
+            <input id="deepseekApiKey" text="" hint="sk-xxxxxxxx" inputType="textPassword" marginBottom="8"/>
 
             <text text="DeepSeek 模型" textSize="14sp" textColor="#666666"/>
-            <input id="deepseekModel" text="{{current.deepseek.model || 'deepseek-chat'}}" hint="deepseek-chat" marginBottom="12"/>
+            <input id="deepseekModel" text="" hint="deepseek-chat" marginBottom="12"/>
 
             <text text="本地模型地址" textSize="14sp" textColor="#666666"/>
-            <input id="localUrl" text="{{current.local.url}}" hint="http://127.0.0.1:8080/v1/chat/completions" marginBottom="8"/>
+            <input id="localUrl" text="" hint="http://127.0.0.1:8080/v1/chat/completions" marginBottom="8"/>
 
             <text text="本地模型名" textSize="14sp" textColor="#666666"/>
-            <input id="localModel" text="{{current.local.model || 'local'}}" hint="local" marginBottom="12"/>
+            <input id="localModel" text="" hint="local" marginBottom="12"/>
 
             <text text="最大执行步数" textSize="14sp" textColor="#666666"/>
-            <input id="maxSteps" text="{{String(current.maxSteps || 15)}}" hint="15" inputType="number" marginBottom="16"/>
+            <input id="maxSteps" text="" hint="15" inputType="number" marginBottom="16"/>
 
             <horizontal gravity="center">
                 <button id="btnTest" text="测试连接" w="100" marginRight="8"/>
@@ -63,6 +63,15 @@ function showConfigUI(onSave) {
     );
 
     ui.statusBarColor("#ffffff");
+
+    // 填充当前配置值（避免 Rhino 引擎下 XML 模板 {{...}} 作用域问题）
+    ui.kimiApiKey.setText(current.kimi.apiKey || "");
+    ui.kimiModel.setText(current.kimi.model || "kimi-k2-6");
+    ui.deepseekApiKey.setText(current.deepseek.apiKey || "");
+    ui.deepseekModel.setText(current.deepseek.model || "deepseek-chat");
+    ui.localUrl.setText(current.local.url || "");
+    ui.localModel.setText(current.local.model || "local");
+    ui.maxSteps.setText(String(current.maxSteps || 15));
 
     // 设置当前选中项
     if (current.provider === "deepseek") {

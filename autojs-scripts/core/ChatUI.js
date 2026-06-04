@@ -122,32 +122,32 @@ function showChatUI() {
                             <text text="模型配置" textSize="20sp" textColor="#222222" gravity="center" marginBottom="16"/>
 
                             <text text="模型提供商" textSize="14sp" textColor="#666666"/>
-                            <spinner id="provider" entries="Kimi (Moonshot)|DeepSeek|本地 llama.cpp" marginBottom="12"/>
+                            <spinner id="provider" entries="Kimi|DeepSeek|本地" marginBottom="12"/>
 
                             <text text="Kimi API Key" textSize="14sp" textColor="#666666"/>
-                            <input id="kimiApiKey" text="{{current.kimi.apiKey}}" hint="sk-xxxxxxxx" inputType="textPassword" marginBottom="8"/>
+                            <input id="kimiApiKey" text="" hint="sk-xxxxxxxx" inputType="textPassword" marginBottom="8"/>
 
                             <text text="Kimi 模型" textSize="14sp" textColor="#666666"/>
-                            <input id="kimiModel" text="{{current.kimi.model || 'kimi-k2-6'}}" hint="kimi-k2-6" marginBottom="12"/>
+                            <input id="kimiModel" text="" hint="kimi-k2-6" marginBottom="12"/>
 
                             <text text="DeepSeek API Key" textSize="14sp" textColor="#666666"/>
-                            <input id="deepseekApiKey" text="{{current.deepseek.apiKey}}" hint="sk-xxxxxxxx" inputType="textPassword" marginBottom="8"/>
+                            <input id="deepseekApiKey" text="" hint="sk-xxxxxxxx" inputType="textPassword" marginBottom="8"/>
 
                             <text text="DeepSeek 模型" textSize="14sp" textColor="#666666"/>
-                            <input id="deepseekModel" text="{{current.deepseek.model || 'deepseek-chat'}}" hint="deepseek-chat" marginBottom="12"/>
+                            <input id="deepseekModel" text="" hint="deepseek-chat" marginBottom="12"/>
 
                             <text text="本地模型地址" textSize="14sp" textColor="#666666"/>
-                            <input id="localUrl" text="{{current.local.url}}" hint="http://127.0.0.1:8080/v1/chat/completions" marginBottom="8"/>
+                            <input id="localUrl" text="" hint="http://127.0.0.1:8080/v1/chat/completions" marginBottom="8"/>
 
                             <text text="本地模型名" textSize="14sp" textColor="#666666"/>
-                            <input id="localModel" text="{{current.local.model || 'local'}}" hint="local" marginBottom="12"/>
+                            <input id="localModel" text="" hint="local" marginBottom="12"/>
 
                             <text text="最大执行步数" textSize="14sp" textColor="#666666"/>
-                            <input id="maxSteps" text="{{String(current.maxSteps || 15)}}" hint="15" inputType="number" marginBottom="16"/>
+                            <input id="maxSteps" text="" hint="15" inputType="number" marginBottom="16"/>
 
                             <horizontal gravity="center">
                                 <button id="btnTest" text="测试连接" w="100" marginRight="8"/>
-                                <button id="btnSaveConfig" text="保存配置" style="Widget.AppCompat.Button.Colored" w="100"/>
+                                <button id="btnSaveConfig" text="保存配置" w="100"/>
                             </horizontal>
 
                             <text id="configStatus" text="" textSize="12sp" textColor="#e74c3c" gravity="center" marginTop="12"/>
@@ -209,6 +209,15 @@ function showChatUI() {
     let currentTab = "chat";
 
     // ===================== 配置页初始化 =====================
+    const current = loadConfig();
+    ui.kimiApiKey.setText(current.kimi.apiKey || "");
+    ui.kimiModel.setText(current.kimi.model || "kimi-k2-6");
+    ui.deepseekApiKey.setText(current.deepseek.apiKey || "");
+    ui.deepseekModel.setText(current.deepseek.model || "deepseek-chat");
+    ui.localUrl.setText(current.local.url || "");
+    ui.localModel.setText(current.local.model || "local");
+    ui.maxSteps.setText(String(current.maxSteps || 15));
+
     if (current.provider === "deepseek") {
         ui.provider.setSelection(1);
     } else if (current.provider === "local") {
