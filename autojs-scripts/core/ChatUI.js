@@ -1,796 +1,317 @@
 /**
- * 对话界面 UI 模块
- * 基于 AutoX.js ui 模块，提供底部标签页式交互界面
+ * ChatUI — 对话界面（v2 架构）
  *
- * 标签页：
- *   - 对话：自然语言输入 → 语义解析 → 任务规划 → 脚本生成 → 执行/保存
- *   - 配置：模型提供商、API Key、模型名称、服务地址等配置
- *
- * 用法:
- *   const ChatUI = require("./core/ChatUI.js");
- *   ChatUI.show();
+ * v2 变更：
+ * - 不再使用 SemanticParser + TaskPlanner 硬编码管道
+ * - 委托给 ChatEngine 管理完整的 生成→执行→调试 闭环
+ * - UI 只负责：消息展示、用户输入、脚本展示、日志展示、状态展示
  */
 
-// ===================== 模块依赖 =====================
-const SemanticParser = require("./SemanticParser.js");
-const TaskPlanner = require("./TaskPlanner.js");
-const ScriptGenerator = require("./ScriptGenerator.js");
-const Logger = require("./Logger.js");
+"ui";
 
-// ===================== 常量 =====================
-const SAVE_DIR = "/sdcard/AutoX/fold7-agent/scripts/";
+var ChatUI = (function () {
+    var ChatEngine = require("../agent/ChatEngine.js");
+    var Logger = require("./Logger.js");
 
-// ===================== 工具函数 =====================
+    var SAVE_DIR = "/sdcard/AutoX/fold7-agent/scripts/";
 
-/**
- * 读取当前配置
- */
-function loadConfig() {
-    try {
-        return require("../config.js");
-    } catch (e) {
-        return {
-            provider: "kimi",
-            kimi: { baseUrl: "https://api.moonshot.cn/v1", apiKey: "", model: "kimi-k2-6" },
-            deepseek: { baseUrl: "https://api.deepseek.com/v1", apiKey: "", model: "deepseek-chat" },
-            local: { baseUrl: "http://127.0.0.1:8080/v1", apiKey: "", model: "local" },
-            maxSteps: 15,
-        };
-    }
-}
+    function showChatUI() {
+        ui.layout(
+            <frame>
+                <vertical id="mainContainer" bg="#f5f5f5">
+                    <!-- 标题栏 -->
+                    <horizontal bg="#ffffff" padding="12 16" elevation="2">
+                        <text text="Fold7 Agent" textSize="20sp" textColor="#333333" textStyle="bold"/>
+                        <text text="AI 脚本助手" textSize="12sp" textColor="#999999" marginLeft="8" layout_gravity="center_vertical"/>
+                    </horizontal>
 
-/**
- * 生成可执行脚本内容（委托给 ScriptGenerator 模块）
- * 使用 generateInline 生成轻量内联脚本，适合 engines.execScript 直接执行
- */
-function generateScript(intention, planSteps) {
-    const instruction = intention.raw || "";
-    return ScriptGenerator.generateInline(instruction, intention, planSteps);
-}
+                    <!-- 状态栏 -->
+                    <horizontal bg="#e3f2fd" padding="8 10" gravity="center_vertical">
+                        <text id="statusText" text="就绪" textSize="12sp" textColor="#1976d2" layout_weight="1"/>
+                        <button id="btnStop" text="停止" textSize="11sp" textColor="#e74c3c" bg="#ffffff" w="60" h="36"/>
+                    </horizontal>
 
-/**
- * 保存脚本到文件
- */
-function saveScriptToFile(filename, content) {
-    if (!files.exists(SAVE_DIR)) {
-        files.createWithDirs(SAVE_DIR);
-    }
-    const path = files.path(SAVE_DIR + filename);
-    files.write(path, content);
-    return path;
-}
+                    <!-- 内容区域 -->
+                    <frame id="contentFrame" layout_weight="1">
+                        <!-- 对话标签页 -->
+                        <vertical id="tabChat" visibility="visible">
+                            <scroll id="chatScroll" layout_weight="1" padding="8">
+                                <vertical id="messageList">
+                                    <horizontal gravity="left" margin="4 8">
+                                        <vertical bg="#e8e8e8" padding="12 10" minWidth="60" maxWidth="300">
+                                            <text text="你好！我是 Fold7 Agent 智能助手。" textSize="14sp" textColor="#333333"/>
+                                            <text text="请告诉我您想要做什么，例如：" textSize="14sp" textColor="#333333" marginTop="4"/>
+                                            <text text="  · 给张三发微信说晚上吃饭" textSize="13sp" textColor="#666666" marginTop="4"/>
+                                            <text text="  · 打开钉钉打卡" textSize="13sp" textColor="#666666"/>
+                                            <text text="  · 每天早上7:15在飞书打卡" textSize="13sp" textColor="#666666"/>
+                                            <text text="  · 在淘宝搜索蓝牙耳机" textSize="13sp" textColor="#666666"/>
+                                        </vertical>
+                                    </horizontal>
+                                </vertical>
+                            </scroll>
 
-// ===================== UI 构建 =====================
-
-function showChatUI() {
-    const current = loadConfig();
-
-    ui.layout(
-        <frame>
-            <vertical id="mainContainer" bg="#f5f5f5">
-                <!-- 标题栏 -->
-                <horizontal bg="#ffffff" padding="12 16" elevation="2">
-                    <text text="Fold7 Agent" textSize="20sp" textColor="#333333" textStyle="bold"/>
-                    <text text="智能对话助手" textSize="12sp" textColor="#999999" marginLeft="8" layout_gravity="center_vertical"/>
-                </horizontal>
-
-                <!-- 内容区域 -->
-                <frame id="contentFrame" layout_weight="1">
-
-                    <!-- ========== 对话标签页 ========== -->
-                    <vertical id="tabChat" visibility="visible">
-                        <!-- 消息列表 -->
-                        <scroll id="chatScroll" layout_weight="1" padding="8">
-                            <vertical id="messageList">
-                                <!-- 欢迎消息 -->
-                                <horizontal gravity="left" margin="4 8">
-                                    <vertical bg="#e8e8e8" padding="12 10" minWidth="60" maxWidth="280">
-                                        <text text="你好！我是 Fold7 Agent 智能助手。" textSize="14sp" textColor="#333333"/>
-                                        <text text="请输入自然语言指令，例如：" textSize="14sp" textColor="#333333" marginTop="4"/>
-                                        <text text="  · 给张三发微信说晚上吃饭" textSize="13sp" textColor="#666666" marginTop="4"/>
-                                        <text text="  · 打开钉钉打卡" textSize="13sp" textColor="#666666"/>
-                                        <text text="  · 在淘宝搜索蓝牙耳机" textSize="13sp" textColor="#666666"/>
-                                    </vertical>
+                            <!-- 输入区域 -->
+                            <vertical bg="#ffffff" padding="8 10" elevation="4">
+                                <horizontal>
+                                    <input id="chatInput"
+                                        hint="输入指令..."
+                                        textSize="14sp"
+                                        textColor="#333333"
+                                        layout_weight="1"
+                                        maxLines="3"
+                                        minHeight="40"
+                                        padding="10 8"/>
+                                    <button id="btnSend"
+                                        text="发送"
+                                        w="70"
+                                        marginLeft="8"
+                                        layout_gravity="bottom"/>
                                 </horizontal>
                             </vertical>
-                        </scroll>
-
-                        <!-- 输入区域 -->
-                        <vertical bg="#ffffff" padding="8 10" elevation="4">
-                            <horizontal>
-                                <input id="chatInput"
-                                    hint="输入指令..."
-                                    textSize="14sp"
-                                    textColor="#333333"
-                                    layout_weight="1"
-                                    maxLines="3"
-                                    minHeight="40"
-                                    padding="10 8"/>
-                                <button id="btnSend"
-                                    text="发送"
-                                    style="Widget.AppCompat.Button.Colored"
-                                    w="70"
-                                    marginLeft="8"
-                                    layout_gravity="bottom"/>
-                            </horizontal>
                         </vertical>
                     </vertical>
+                </vertical>
+            </frame>
+        );
 
-                    <!-- ========== 配置标签页 ========== -->
-                    <scroll id="tabConfig" visibility="gone" padding="16">
-                        <vertical>
-                            <text text="模型配置" textSize="20sp" textColor="#222222" gravity="center" marginBottom="16"/>
+        ui.statusBarColor("#ffffff");
 
-                            <horizontal gravity="center" marginBottom="12">
-                                <button id="tabCfgKimi" text="Kimi" w="90" marginRight="4"/>
-                                <button id="tabCfgDeepSeek" text="DeepSeek" w="90" marginRight="4"/>
-                                <button id="tabCfgLocal" text="本地" w="90"/>
-                            </horizontal>
-
-                            <vertical id="cfgPageKimi" visibility="visible">
-                                <text text="Kimi Base URL" textSize="14sp" textColor="#666666"/>
-                                <input id="kimiBaseUrl" text="" hint="https://api.moonshot.cn/v1" marginBottom="8"/>
-                                <text text="Kimi API Key" textSize="14sp" textColor="#666666"/>
-                                <input id="kimiApiKey" text="" hint="sk-xxxxxxxx" inputType="textPassword" marginBottom="8"/>
-                                <text text="Kimi 模型" textSize="14sp" textColor="#666666"/>
-                                <input id="kimiModel" text="" hint="kimi-k2-6" marginBottom="12"/>
-                            </vertical>
-
-                            <vertical id="cfgPageDeepSeek" visibility="gone">
-                                <text text="DeepSeek Base URL" textSize="14sp" textColor="#666666"/>
-                                <input id="deepseekBaseUrl" text="" hint="https://api.deepseek.com/v1" marginBottom="8"/>
-                                <text text="DeepSeek API Key" textSize="14sp" textColor="#666666"/>
-                                <input id="deepseekApiKey" text="" hint="sk-xxxxxxxx" inputType="textPassword" marginBottom="8"/>
-                                <text text="DeepSeek 模型" textSize="14sp" textColor="#666666"/>
-                                <input id="deepseekModel" text="" hint="deepseek-chat" marginBottom="12"/>
-                            </vertical>
-
-                            <vertical id="cfgPageLocal" visibility="gone">
-                                <text text="本地 Base URL" textSize="14sp" textColor="#666666"/>
-                                <input id="localBaseUrl" text="" hint="http://127.0.0.1:8080/v1" marginBottom="8"/>
-                                <text text="本地模型名" textSize="14sp" textColor="#666666"/>
-                                <input id="localModel" text="" hint="local" marginBottom="12"/>
-                            </vertical>
-
-                            <text text="最大执行步数" textSize="14sp" textColor="#666666"/>
-                            <input id="maxSteps" text="" hint="15" inputType="number" marginBottom="16"/>
-
-                            <horizontal gravity="center">
-                                <button id="btnTest" text="测试连接" w="100" marginRight="8"/>
-                                <button id="btnSaveConfig" text="保存配置" w="100"/>
-                            </horizontal>
-
-                            <text id="configStatus" text="" textSize="12sp" textColor="#e74c3c" gravity="center" marginTop="12"/>
-
-                            <!-- 当前配置状态 -->
-                            <vertical bg="#f0f0f0" padding="12" marginTop="16" radius="4">
-                                <text text="当前配置状态" textSize="14sp" textColor="#333333" textStyle="bold" marginBottom="8"/>
-                                <text id="statusProvider" text="提供商: --" textSize="13sp" textColor="#666666"/>
-                                <text id="statusModel" text="模型: --" textSize="13sp" textColor="#666666"/>
-                                <text id="statusKey" text="API Key: --" textSize="13sp" textColor="#666666"/>
-                                <text id="statusSteps" text="最大步数: --" textSize="13sp" textColor="#666666"/>
-                            </vertical>
-                        </vertical>
-                    </scroll>
-
-                    <!-- ========== 历史标签页 ========== -->
-                    <vertical id="tabHistory" visibility="gone" layout_weight="1">
-                        <vertical bg="#ffffff" padding="12" elevation="2">
-                            <text text="📊 执行历史" textSize="18sp" textColor="#222222" gravity="center" marginBottom="8"/>
-                            <horizontal gravity="center">
-                                <text id="histDate" text="--" textSize="13sp" textColor="#666666" w="80"/>
-                                <text id="histSuccess" text="✅ 0" textSize="15sp" textColor="#27ae60" marginLeft="12" w="60"/>
-                                <text id="histFailed" text="❌ 0" textSize="15sp" textColor="#e74c3c" marginLeft="8" w="60"/>
-                            </horizontal>
-                        </vertical>
-                        <scroll id="historyScroll" layout_weight="1">
-                            <vertical id="historyList" padding="8">
-                                <text text="加载中..." textSize="13sp" textColor="#999999" gravity="center" marginTop="16"/>
-                            </vertical>
-                        </scroll>
-                        <horizontal bg="#ffffff" padding="8" gravity="center">
-                            <button id="btnRefreshHistory" text="刷新" w="100"/>
-                            <button id="btnClearHistory" text="清空显示" w="100" marginLeft="8"/>
-                        </horizontal>
-                    </vertical>
-
-                </frame>
-
-                <!-- 底部标签栏 -->
-                <horizontal bg="#ffffff" elevation="8" h="56">
-                    <horizontal id="tabBtnChat" layout_weight="1" gravity="center" bg="#e3f2fd">
-                        <text text="对话" textSize="14sp" textColor="#1976d2" textStyle="bold"/>
-                    </horizontal>
-                    <horizontal id="tabBtnConfig" layout_weight="1" gravity="center" bg="#ffffff">
-                        <text text="配置" textSize="14sp" textColor="#666666"/>
-                    </horizontal>
-                    <horizontal id="tabBtnHistory" layout_weight="1" gravity="center" bg="#ffffff">
-                        <text text="历史" textSize="14sp" textColor="#666666"/>
-                    </horizontal>
-                </horizontal>
-
-            </vertical>
-        </frame>
-    );
-
-    ui.statusBarColor("#ffffff");
-
-    // ===================== 状态变量 =====================
-    let currentTab = "chat";
-
-    // ===================== 配置页初始化 =====================
-    // current 已在上面声明，直接复用
-    ui.kimiBaseUrl.setText(current.kimi.baseUrl || "https://api.moonshot.cn/v1");
-    ui.kimiApiKey.setText(current.kimi.apiKey || "");
-    ui.kimiModel.setText(current.kimi.model || "kimi-k2-6");
-    ui.deepseekBaseUrl.setText(current.deepseek.baseUrl || "https://api.deepseek.com/v1");
-    ui.deepseekApiKey.setText(current.deepseek.apiKey || "");
-    ui.deepseekModel.setText(current.deepseek.model || "deepseek-chat");
-    ui.localBaseUrl.setText(current.local.baseUrl || "http://127.0.0.1:8080/v1");
-    ui.localModel.setText(current.local.model || "local");
-    ui.maxSteps.setText(String(current.maxSteps || 15));
-
-    var cfgProvider = current.provider || "kimi";
-
-    function switchCfgTab(provider) {
-        cfgProvider = provider;
-        ui.cfgPageKimi.setVisibility(provider === "kimi" ? android.view.View.VISIBLE : android.view.View.GONE);
-        ui.cfgPageDeepSeek.setVisibility(provider === "deepseek" ? android.view.View.VISIBLE : android.view.View.GONE);
-        ui.cfgPageLocal.setVisibility(provider === "local" ? android.view.View.VISIBLE : android.view.View.GONE);
-        ui.tabCfgKimi.setBackgroundColor(colors.parseColor(provider === "kimi" ? "#1976d2" : "#f0f0f0"));
-        ui.tabCfgKimi.setTextColor(colors.parseColor(provider === "kimi" ? "#ffffff" : "#333333"));
-        ui.tabCfgDeepSeek.setBackgroundColor(colors.parseColor(provider === "deepseek" ? "#1976d2" : "#f0f0f0"));
-        ui.tabCfgDeepSeek.setTextColor(colors.parseColor(provider === "deepseek" ? "#ffffff" : "#333333"));
-        ui.tabCfgLocal.setBackgroundColor(colors.parseColor(provider === "local" ? "#1976d2" : "#f0f0f0"));
-        ui.tabCfgLocal.setTextColor(colors.parseColor(provider === "local" ? "#ffffff" : "#333333"));
-    }
-
-    ui.tabCfgKimi.click(function () { switchCfgTab("kimi"); });
-    ui.tabCfgDeepSeek.click(function () { switchCfgTab("deepseek"); });
-    ui.tabCfgLocal.click(function () { switchCfgTab("local"); });
-
-    switchCfgTab(cfgProvider);
-    updateConfigStatus();
-
-    function updateConfigStatus() {
-        const cfg = loadConfig();
-        const providerName = cfg.provider === "kimi" ? "Kimi" : (cfg.provider === "deepseek" ? "DeepSeek" : "本地");
-        const providerCfg = cfg[cfg.provider] || {};
-        const hasKey = providerCfg.apiKey && providerCfg.apiKey.length > 5;
-        ui.statusProvider.setText("提供商: " + providerName);
-        ui.statusModel.setText("模型: " + (providerCfg.model || "--"));
-        ui.statusKey.setText("API Key: " + (hasKey ? "已配置" : "未配置"));
-        ui.statusSteps.setText("最大步数: " + (cfg.maxSteps || 15));
-    }
-
-    // ===================== 标签切换 =====================
-    function switchTab(tab) {
-        // 全部隐藏
-        ui.tabChat.setVisibility(android.view.View.GONE);
-        ui.tabConfig.setVisibility(android.view.View.GONE);
-        ui.tabHistory.setVisibility(android.view.View.GONE);
-        ui.tabBtnChat.setBackgroundColor(colors.parseColor("#ffffff"));
-        ui.tabBtnConfig.setBackgroundColor(colors.parseColor("#ffffff"));
-        ui.tabBtnHistory.setBackgroundColor(colors.parseColor("#ffffff"));
-        ui.tabBtnChat.getChildAt(0).setTextColor(colors.parseColor("#666666"));
-        ui.tabBtnConfig.getChildAt(0).setTextColor(colors.parseColor("#666666"));
-        ui.tabBtnHistory.getChildAt(0).setTextColor(colors.parseColor("#666666"));
-
-        if (tab === "chat") {
-            ui.tabChat.setVisibility(android.view.View.VISIBLE);
-            ui.tabBtnChat.setBackgroundColor(colors.parseColor("#e3f2fd"));
-            ui.tabBtnChat.getChildAt(0).setTextColor(colors.parseColor("#1976d2"));
-            currentTab = "chat";
-        } else if (tab === "config") {
-            ui.tabConfig.setVisibility(android.view.View.VISIBLE);
-            ui.tabBtnConfig.setBackgroundColor(colors.parseColor("#e3f2fd"));
-            ui.tabBtnConfig.getChildAt(0).setTextColor(colors.parseColor("#1976d2"));
-            currentTab = "config";
-            updateConfigStatus();
-        } else if (tab === "history") {
-            ui.tabHistory.setVisibility(android.view.View.VISIBLE);
-            ui.tabBtnHistory.setBackgroundColor(colors.parseColor("#e3f2fd"));
-            ui.tabBtnHistory.getChildAt(0).setTextColor(colors.parseColor("#1976d2"));
-            currentTab = "history";
-            loadHistory();
-        }
-    }
-
-    ui.tabBtnChat.click(function () { switchTab("chat"); });
-    ui.tabBtnConfig.click(function () { switchTab("config"); });
-    ui.tabBtnHistory.click(function () { switchTab("history"); });
-
-    // ===================== 消息渲染 =====================
-
-    /**
-     * 添加用户消息（右侧蓝色气泡）
-     */
-    function addUserMessage(text) {
-        ui.run(function () {
-            const container = ui.messageList;
-            const row = new android.widget.LinearLayout(context);
-            row.setOrientation(android.widget.LinearLayout.HORIZONTAL);
-            row.setGravity(android.view.Gravity.RIGHT);
-            row.setPadding(4, 8, 4, 8);
-
-            const bubble = new android.widget.TextView(context);
-            bubble.setText(text);
-            bubble.setTextSize(14);
-            bubble.setTextColor(colors.parseColor("#ffffff"));
-            bubble.setBackgroundDrawable(
-                new android.graphics.drawable.GradientDrawable()
-                    .setCornerRadii([24, 24, 4, 4, 24, 24, 24, 24])
-                    .setColor(colors.parseColor("#1976d2"))
-            );
-            bubble.setPadding(24, 16, 24, 16);
-            bubble.setMaxWidth(device.width * 0.7);
-
-            row.addView(bubble);
-            container.addView(row);
-
-            // 滚动到底部
-            ui.chatScroll.fullScroll(android.view.View.FOCUS_DOWN);
-        });
-    }
-
-    /**
-     * 添加助手消息（左侧灰色气泡）
-     */
-    function addAssistantMessage(htmlText) {
-        ui.run(function () {
-            const container = ui.messageList;
-            const row = new android.widget.LinearLayout(context);
-            row.setOrientation(android.widget.LinearLayout.HORIZONTAL);
-            row.setGravity(android.view.Gravity.LEFT);
-            row.setPadding(4, 8, 4, 8);
-
-            const bubble = new android.widget.TextView(context);
-            bubble.setText(android.text.Html.fromHtml(htmlText));
-            bubble.setTextSize(14);
-            bubble.setTextColor(colors.parseColor("#333333"));
-            bubble.setBackgroundDrawable(
-                new android.graphics.drawable.GradientDrawable()
-                    .setCornerRadii([4, 4, 24, 24, 24, 24, 24, 24])
-                    .setColor(colors.parseColor("#e8e8e8"))
-            );
-            bubble.setPadding(24, 16, 24, 16);
-            bubble.setMaxWidth(device.width * 0.75);
-
-            row.addView(bubble);
-            container.addView(row);
-
-            ui.chatScroll.fullScroll(android.view.View.FOCUS_DOWN);
-        });
-    }
-
-    /**
-     * 添加思考中提示
-     */
-    function addThinkingIndicator() {
-        const id = "thinking_" + Date.now();
-        ui.run(function () {
-            const container = ui.messageList;
-            const row = new android.widget.LinearLayout(context);
-            row.setOrientation(android.widget.LinearLayout.HORIZONTAL);
-            row.setGravity(android.view.Gravity.LEFT);
-            row.setPadding(4, 8, 4, 8);
-            row.setTag(id);
-
-            const bubble = new android.widget.TextView(context);
-            bubble.setText("思考中...");
-            bubble.setTextSize(14);
-            bubble.setTextColor(colors.parseColor("#999999"));
-            bubble.setBackgroundDrawable(
-                new android.graphics.drawable.GradientDrawable()
-                    .setCornerRadii([4, 4, 24, 24, 24, 24, 24, 24])
-                    .setColor(colors.parseColor("#e8e8e8"))
-            );
-            bubble.setPadding(24, 16, 24, 16);
-
-            row.addView(bubble);
-            container.addView(row);
-            ui.chatScroll.fullScroll(android.view.View.FOCUS_DOWN);
-        });
-        return id;
-    }
-
-    /**
-     * 移除思考中提示
-     */
-    function removeThinkingIndicator(id) {
-        ui.run(function () {
-            const container = ui.messageList;
-            for (let i = container.getChildCount() - 1; i >= 0; i--) {
-                const child = container.getChildAt(i);
-                if (child.getTag && child.getTag() === id) {
-                    container.removeView(child);
-                    break;
-                }
-            }
-        });
-    }
-
-    /**
-     * 添加带按钮的助手响应
-     */
-    function addAssistantResponseWithActions(intention, planSteps, scriptContent) {
-        const thisScript = scriptContent;
-        const thisFilename = "script_" + Date.now() + ".js";
-
-        const intentStr = JSON.stringify(intention, null, 2)
-            .replace(/&/g, "&amp;")
-            .replace(/</g, "&lt;")
-            .replace(/>/g, "&gt;");
-        const planStr = JSON.stringify(planSteps, null, 2)
-            .replace(/&/g, "&amp;")
-            .replace(/</g, "&lt;")
-            .replace(/>/g, "&gt;");
-        const scriptPreview = scriptContent.substring(0, 800)
-            .replace(/&/g, "&amp;")
-            .replace(/</g, "&lt;")
-            .replace(/>/g, "&gt;")
-            .replace(/\n/g, "<br/>");
-        const truncated = scriptContent.length > 800 ? "<br/><i>... (脚本已截断，共 " + scriptContent.length + " 字符)</i>" : "";
-
-        const html =
-            '<b>意图解析</b><br/>' +
-            '<pre style="background:#f5f5f5;padding:8px;border-radius:4px;font-size:11sp;color:#333;">' + intentStr + '</pre><br/>' +
-            '<b>执行计划</b> (' + planSteps.length + ' 步)<br/>' +
-            '<pre style="background:#f5f5f5;padding:8px;border-radius:4px;font-size:11sp;color:#333;">' + planStr + '</pre><br/>' +
-            '<b>脚本预览</b><br/>' +
-            '<pre style="background:#f5f5f5;padding:8px;border-radius:4px;font-size:10sp;color:#555;">' + scriptPreview + truncated + '</pre><br/>' +
-            '<font color="#1976d2">点击下方按钮执行或保存脚本</font>';
-
-        addAssistantMessage(html);
-
-        // 添加操作按钮行（脚本内容通过闭包绑定到按钮，避免共享变量竞态）
-        ui.run(function () {
-            const container = ui.messageList;
-            const row = new android.widget.LinearLayout(context);
-            row.setOrientation(android.widget.LinearLayout.HORIZONTAL);
-            row.setGravity(android.view.Gravity.LEFT);
-            row.setPadding(4, 4, 4, 12);
-
-            const btnRun = new android.widget.Button(context);
-            btnRun.setText("执行");
-            btnRun.setTextSize(13);
-            btnRun.setTextColor(colors.parseColor("#ffffff"));
-            btnRun.setBackgroundDrawable(
-                new android.graphics.drawable.GradientDrawable()
-                    .setCornerRadius(8)
-                    .setColor(colors.parseColor("#4caf50"))
-            );
-            btnRun.setPadding(24, 12, 24, 12);
-
-            const btnSave = new android.widget.Button(context);
-            btnSave.setText("保存脚本");
-            btnSave.setTextSize(13);
-            btnSave.setTextColor(colors.parseColor("#ffffff"));
-            btnSave.setBackgroundDrawable(
-                new android.graphics.drawable.GradientDrawable()
-                    .setCornerRadius(8)
-                    .setColor(colors.parseColor("#1976d2"))
-            );
-            btnSave.setPadding(24, 12, 24, 12);
-            btnSave.setLayoutParams(new android.widget.LinearLayout.LayoutParams(
-                android.widget.LinearLayout.LayoutParams.WRAP_CONTENT,
-                android.widget.LinearLayout.LayoutParams.WRAP_CONTENT
-            ));
-            const lp = btnSave.getLayoutParams();
-            lp.leftMargin = 16;
-            btnSave.setLayoutParams(lp);
-
-            btnRun.setOnClickListener(new android.view.View.OnClickListener({
-                onClick: function () {
-                    threads.start(function () {
-                        try {
-                            toastLog("开始执行脚本...");
-                            engines.execScript("fold7_generated", thisScript);
-                        } catch (e) {
-                            toastLog("执行失败: " + e.message);
-                        }
-                    });
-                }
-            }));
-
-            btnSave.setOnClickListener(new android.view.View.OnClickListener({
-                onClick: function () {
-                    threads.start(function () {
-                        try {
-                            const path = saveScriptToFile(thisFilename, thisScript);
-                            ui.run(function () {
-                                toastLog("脚本已保存: " + path);
-                            });
-                        } catch (e) {
-                            ui.run(function () {
-                                toastLog("保存失败: " + e.message);
-                            });
-                        }
-                    });
-                }
-            }));
-
-            row.addView(btnRun);
-            row.addView(btnSave);
-            container.addView(row);
-            ui.chatScroll.fullScroll(android.view.View.FOCUS_DOWN);
-        });
-    }
-
-    // ===================== 发送按钮 =====================
-    ui.btnSend.click(function () {
-        const text = String(ui.chatInput.getText() || "").trim();
-        if (!text) {
-            toastLog("请输入指令");
-            return;
-        }
-
-        ui.chatInput.setText("");
-        addUserMessage(text);
-
-        const thinkingId = addThinkingIndicator();
-
-        threads.start(function () {
-            try {
-                // a. 语义解析
-                const intention = SemanticParser.parse(text);
-                sleep(300);
-
-                // b. 任务规划
-                const planSteps = TaskPlanner.plan(intention);
-                sleep(300);
-
-                // c. 生成脚本
-                const scriptContent = generateScript(intention, planSteps);
-
-                // d. 移除思考提示，显示结果
+        // 创建对话引擎
+        var engine = ChatEngine.create({
+            onMessage: function (msg) {
+                addAssistantMessage(msg);
+            },
+            onScript: function (code, desc) {
+                addScriptCard(code, desc);
+            },
+            onLog: function (line) {
+                // 日志在行内展示，或者可以额外展示
+                // 这里暂不逐行展示，避免刷屏
+            },
+            onStatus: function (status) {
                 ui.run(function () {
-                    removeThinkingIndicator(thinkingId);
-                    addAssistantResponseWithActions(intention, planSteps, scriptContent);
-                });
-            } catch (e) {
-                ui.run(function () {
-                    removeThinkingIndicator(thinkingId);
-                    addAssistantMessage('<font color="#e74c3c">处理出错: ' + e.message + '</font>');
-                });
-            }
-        });
-    });
-
-    // ===================== 配置页：测试连接 =====================
-    ui.btnTest.click(function () {
-        var provider = cfgProvider;
-        var apiKey = provider === "kimi"
-            ? String(ui.kimiApiKey.getText() || "").trim()
-            : (provider === "deepseek" ? String(ui.deepseekApiKey.getText() || "").trim() : "");
-        var baseUrl;
-        if (provider === "kimi") {
-            baseUrl = String(ui.kimiBaseUrl.getText() || "https://api.moonshot.cn/v1").trim();
-        } else if (provider === "deepseek") {
-            baseUrl = String(ui.deepseekBaseUrl.getText() || "https://api.deepseek.com/v1").trim();
-        } else {
-            baseUrl = String(ui.localBaseUrl.getText() || "http://127.0.0.1:8080/v1").trim();
-        }
-        baseUrl = baseUrl.replace(/\/$/, "");
-        var apiUrl = baseUrl + "/chat/completions";
-
-        if ((provider === "kimi" || provider === "deepseek") && apiKey.length < 10) {
-            ui.configStatus.setText("API Key 不能为空");
-            ui.configStatus.setTextColor(colors.parseColor("#e74c3c"));
-            return;
-        }
-
-        ui.configStatus.setText("正在测试连接...");
-        ui.configStatus.setTextColor(colors.parseColor("#666666"));
-        threads.start(function () {
-            try {
-                var res;
-                if (provider === "kimi") {
-                    res = http.postJson(apiUrl, {
-                        model: "kimi-k2-6",
-                        messages: [{ role: "user", content: "hi" }],
-                        max_tokens: 1,
-                    }, {
-                        headers: { "Authorization": "Bearer " + apiKey, "Content-Type": "application/json" },
-                        timeout: 15000,
-                    });
-                } else if (provider === "deepseek") {
-                    res = http.postJson(apiUrl, {
-                        model: "deepseek-chat",
-                        messages: [{ role: "user", content: "hi" }],
-                        max_tokens: 1,
-                    }, {
-                        headers: { "Authorization": "Bearer " + apiKey, "Content-Type": "application/json" },
-                        timeout: 15000,
-                    });
-                } else {
-                    // 本地模型用简单 POST 测试，即使返回 400/401 也说明服务器在线
-                    res = http.postJson(baseUrl + "/chat/completions", {
-                        model: "test",
-                        messages: [{ role: "user", content: "hi" }],
-                        max_tokens: 1,
-                    }, { timeout: 5000 });
-                }
-
-                ui.run(function () {
-                    var statusCode = res ? res.statusCode : 0;
-                    if (statusCode >= 200 && statusCode < 300) {
-                        ui.configStatus.setText("连接成功 (" + statusCode + ")");
-                        ui.configStatus.setTextColor(colors.parseColor("#4caf50"));
+                    ui.statusText.setText(status);
+                    if (status.indexOf("✅") >= 0) {
+                        ui.statusText.setTextColor(colors.parseColor("#27ae60"));
+                    } else if (status.indexOf("❌") >= 0 || status.indexOf("失败") >= 0) {
+                        ui.statusText.setTextColor(colors.parseColor("#e74c3c"));
+                    } else if (status.indexOf("🧠") >= 0) {
+                        ui.statusText.setTextColor(colors.parseColor("#1976d2"));
                     } else {
-                        ui.configStatus.setText("连接失败: HTTP " + statusCode);
-                        ui.configStatus.setTextColor(colors.parseColor("#e74c3c"));
+                        ui.statusText.setTextColor(colors.parseColor("#666666"));
                     }
                 });
-            } catch (e) {
+            },
+            onComplete: function (report) {
+                var msg = report.success
+                    ? "✅ 任务执行完成"
+                    : "❌ 任务执行失败: " + (report.error || "未知错误");
+                addAssistantMessage(msg);
                 ui.run(function () {
-                    ui.configStatus.setText("连接失败: " + e.message);
-                    ui.configStatus.setTextColor(colors.parseColor("#e74c3c"));
+                    ui.statusText.setText(report.success ? "就绪" : "执行失败");
                 });
-            }
+            },
         });
-    });
 
-    // ===================== 配置页：保存配置 =====================
-    ui.btnSaveConfig.click(function () {
-        var provider = cfgProvider;
-        var kimiBaseUrl = String(ui.kimiBaseUrl.getText() || "https://api.moonshot.cn/v1").trim();
-        var kimiApiKey = String(ui.kimiApiKey.getText() || "").trim();
-        var kimiModel = String(ui.kimiModel.getText() || "kimi-k2-6").trim();
-        var deepseekBaseUrl = String(ui.deepseekBaseUrl.getText() || "https://api.deepseek.com/v1").trim();
-        var deepseekApiKey = String(ui.deepseekApiKey.getText() || "").trim();
-        var deepseekModel = String(ui.deepseekModel.getText() || "deepseek-chat").trim();
-        var localBaseUrl = String(ui.localBaseUrl.getText() || "http://127.0.0.1:8080/v1").trim();
-        var localModel = String(ui.localModel.getText() || "local").trim();
-        var maxSteps = parseInt(String(ui.maxSteps.getText() || "15")) || 15;
+        // 停止按钮
+        ui.btnStop.click(function () {
+            engine.stop();
+            toastLog("已停止当前任务");
+        });
 
-        if (provider === "kimi" && kimiApiKey.length < 10) {
-            ui.configStatus.setText("Kimi API Key 不能为空");
-            ui.configStatus.setTextColor(colors.parseColor("#e74c3c"));
-            return;
+        // 发送按钮
+        ui.btnSend.click(function () {
+            var text = String(ui.chatInput.getText() || "").trim();
+            if (!text) {
+                toastLog("请输入指令");
+                return;
+            }
+            ui.chatInput.setText("");
+            addUserMessage(text);
+            engine.send(text);
+        });
+
+        // ========== 消息渲染工具函数 ==========
+
+        function addUserMessage(text) {
+            ui.run(function () {
+                var container = ui.messageList;
+                var row = new android.widget.LinearLayout(context);
+                row.setOrientation(android.widget.LinearLayout.HORIZONTAL);
+                row.setGravity(android.view.Gravity.RIGHT);
+                row.setPadding(4, 8, 4, 8);
+
+                var bubble = new android.widget.TextView(context);
+                bubble.setText(text);
+                bubble.setTextSize(14);
+                bubble.setTextColor(colors.parseColor("#ffffff"));
+                bubble.setBackgroundDrawable(
+                    new android.graphics.drawable.GradientDrawable()
+                        .setCornerRadii([24, 24, 4, 4, 24, 24, 24, 24])
+                        .setColor(colors.parseColor("#1976d2"))
+                );
+                bubble.setPadding(24, 16, 24, 16);
+                bubble.setMaxWidth(device.width * 0.7);
+
+                row.addView(bubble);
+                container.addView(row);
+                ui.chatScroll.fullScroll(android.view.View.FOCUS_DOWN);
+            });
         }
-        if (provider === "deepseek" && deepseekApiKey.length < 10) {
-            ui.configStatus.setText("DeepSeek API Key 不能为空");
-            ui.configStatus.setTextColor(colors.parseColor("#e74c3c"));
-            return;
+
+        function addAssistantMessage(text) {
+            ui.run(function () {
+                var container = ui.messageList;
+                var row = new android.widget.LinearLayout(context);
+                row.setOrientation(android.widget.LinearLayout.HORIZONTAL);
+                row.setGravity(android.view.Gravity.LEFT);
+                row.setPadding(4, 8, 4, 8);
+
+                var bubble = new android.widget.TextView(context);
+                bubble.setText(text);
+                bubble.setTextSize(14);
+                bubble.setTextColor(colors.parseColor("#333333"));
+                bubble.setBackgroundDrawable(
+                    new android.graphics.drawable.GradientDrawable()
+                        .setCornerRadii([4, 4, 24, 24, 24, 24, 24, 24])
+                        .setColor(colors.parseColor("#e8e8e8"))
+                );
+                bubble.setPadding(24, 16, 24, 16);
+                bubble.setMaxWidth(device.width * 0.75);
+
+                row.addView(bubble);
+                container.addView(row);
+                ui.chatScroll.fullScroll(android.view.View.FOCUS_DOWN);
+            });
         }
 
-        var configObj = {
-            provider: provider,
-            kimi: {
-                baseUrl: kimiBaseUrl,
-                apiKey: kimiApiKey,
-                model: kimiModel,
-            },
-            deepseek: {
-                baseUrl: deepseekBaseUrl,
-                apiKey: deepseekApiKey,
-                model: deepseekModel,
-            },
-            local: {
-                baseUrl: localBaseUrl,
-                apiKey: "",
-                model: localModel,
-            },
-            maxSteps: maxSteps,
-            delay: {
-                min: 500,
-                max: 2000,
-                wechatMin: 3000,
-            },
-        };
-        var configContent = 'module.exports = ' + JSON.stringify(configObj, null, 4) + ';\n';
+        /**
+         * 添加脚本卡片（带执行和保存按钮）
+         */
+        function addScriptCard(code, desc) {
+            var filename = "script_" + Date.now() + ".js";
 
-        try {
-            var configPath = files.path("/sdcard/AutoX/fold7-agent/autojs-scripts/config.js");
-            files.createWithDirs(configPath);
-            files.write(configPath, configContent);
-            ui.configStatus.setText("配置已保存");
-            ui.configStatus.setTextColor(colors.parseColor("#4caf50"));
-            toastLog("配置已保存");
-            updateConfigStatus();
-        } catch (e) {
-            ui.configStatus.setText("保存失败: " + e.message);
-            ui.configStatus.setTextColor(colors.parseColor("#e74c3c"));
-        }
-    });
+            ui.run(function () {
+                var container = ui.messageList;
 
-    // ===================== 历史页：加载历史记录 =====================
-    function loadHistory() {
-        threads.start(function () {
-            try {
-                const stats = Logger.todayStats();
-                const records = Logger.readRecent(30);
+                // 描述文本
+                var descRow = new android.widget.LinearLayout(context);
+                descRow.setOrientation(android.widget.LinearLayout.HORIZONTAL);
+                descRow.setGravity(android.view.Gravity.LEFT);
+                descRow.setPadding(4, 8, 4, 4);
 
-                ui.run(function () {
-                    ui.histDate.setText("📅 " + stats.date);
-                    ui.histSuccess.setText("✅ " + stats.success);
-                    ui.histFailed.setText("❌ " + stats.failed);
+                var descText = new android.widget.TextView(context);
+                descText.setText("📜 " + (desc || "生成的脚本"));
+                descText.setTextSize(13);
+                descText.setTextColor(colors.parseColor("#666666"));
+                descRow.addView(descText);
+                container.addView(descRow);
 
-                    const container = ui.historyList;
-                    container.removeAllViews();
+                // 脚本预览框
+                var previewRow = new android.widget.LinearLayout(context);
+                previewRow.setOrientation(android.widget.LinearLayout.HORIZONTAL);
+                previewRow.setGravity(android.view.Gravity.LEFT);
+                previewRow.setPadding(4, 4, 4, 4);
 
-                    if (records.length === 0) {
-                        const emptyText = new android.widget.TextView(context);
-                        emptyText.setText("暂无执行记录");
-                        emptyText.setTextSize(13);
-                        emptyText.setTextColor(colors.parseColor("#999999"));
-                        emptyText.setGravity(android.view.Gravity.CENTER);
-                        emptyText.setPadding(0, 32, 0, 0);
-                        container.addView(emptyText);
-                        return;
-                    }
+                var preview = new android.widget.TextView(context);
+                var previewText = code.substring(0, 600).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+                if (code.length > 600) previewText += "\n... (共 " + code.length + " 字符)";
+                preview.setText(previewText);
+                preview.setTextSize(11);
+                preview.setTextColor(colors.parseColor("#555555"));
+                preview.setBackgroundDrawable(
+                    new android.graphics.drawable.GradientDrawable()
+                        .setCornerRadius(8)
+                        .setColor(colors.parseColor("#f0f0f0"))
+                );
+                preview.setPadding(16, 12, 16, 12);
+                preview.setMaxWidth(device.width * 0.85);
 
-                    records.slice().reverse().forEach(function (r) {
-                        const time = r.timestamp ? r.timestamp.substring(11, 19) : "?";
-                        let color = "#333333";
-                        let icon = "📝";
-                        let summary = r.event || "unknown";
+                previewRow.addView(preview);
+                container.addView(previewRow);
 
-                        if (r.event === "task_start") {
-                            icon = "🚀";
-                            summary = "开始: " + (r.instruction || r.type || "");
-                        } else if (r.event === "task_end") {
-                            icon = r.success ? "✅" : "❌";
-                            color = r.success ? "#27ae60" : "#e74c3c";
-                            summary = (r.success ? "成功" : "失败") + " | " + (r.message || "");
-                        } else if (r.event === "error") {
-                            icon = "💥";
-                            color = "#e74c3c";
-                            summary = "错误: " + (r.error || "");
-                        } else if (r.event === "step") {
-                            icon = "▶️";
-                            summary = "步骤" + r.stepIndex + ": " + r.action + (r.target ? " → " + r.target : "");
+                // 操作按钮
+                var btnRow = new android.widget.LinearLayout(context);
+                btnRow.setOrientation(android.widget.LinearLayout.HORIZONTAL);
+                btnRow.setGravity(android.view.Gravity.LEFT);
+                btnRow.setPadding(4, 4, 4, 12);
+
+                var btnRun = new android.widget.Button(context);
+                btnRun.setText("▶ 执行");
+                btnRun.setTextSize(13);
+                btnRun.setTextColor(colors.parseColor("#ffffff"));
+                btnRun.setBackgroundDrawable(
+                    new android.graphics.drawable.GradientDrawable()
+                        .setCornerRadius(8)
+                        .setColor(colors.parseColor("#4caf50"))
+                );
+                btnRun.setPadding(24, 12, 24, 12);
+
+                var btnSave = new android.widget.Button(context);
+                btnSave.setText("💾 保存");
+                btnSave.setTextSize(13);
+                btnSave.setTextColor(colors.parseColor("#ffffff"));
+                btnSave.setBackgroundDrawable(
+                    new android.graphics.drawable.GradientDrawable()
+                        .setCornerRadius(8)
+                        .setColor(colors.parseColor("#1976d2"))
+                );
+                btnSave.setPadding(24, 12, 24, 12);
+                var lpSave = new android.widget.LinearLayout.LayoutParams(
+                    android.widget.LinearLayout.LayoutParams.WRAP_CONTENT,
+                    android.widget.LinearLayout.LayoutParams.WRAP_CONTENT
+                );
+                lpSave.leftMargin = 16;
+                btnSave.setLayoutParams(lpSave);
+
+                // 使用闭包绑定脚本内容，避免变量竞态
+                (function (scriptCode, scriptFile) {
+                    btnRun.setOnClickListener(new android.view.View.OnClickListener({
+                        onClick: function () {
+                            threads.start(function () {
+                                try {
+                                    engine.execute(scriptCode, "用户手动执行");
+                                } catch (e) {
+                                    toastLog("执行失败: " + e.message);
+                                }
+                            });
                         }
+                    }));
 
-                        const card = new android.widget.LinearLayout(context);
-                        card.setOrientation(android.widget.LinearLayout.VERTICAL);
-                        card.setPadding(24, 16, 24, 16);
-                        card.setBackgroundDrawable(
-                            new android.graphics.drawable.GradientDrawable()
-                                .setCornerRadius(12)
-                                .setColor(colors.parseColor("#f8f9fa"))
-                        );
-                        const lp = new android.widget.LinearLayout.LayoutParams(
-                            android.widget.LinearLayout.LayoutParams.MATCH_PARENT,
-                            android.widget.LinearLayout.LayoutParams.WRAP_CONTENT
-                        );
-                        lp.setMargins(8, 6, 8, 6);
-                        card.setLayoutParams(lp);
+                    btnSave.setOnClickListener(new android.view.View.OnClickListener({
+                        onClick: function () {
+                            threads.start(function () {
+                                try {
+                                    if (!files.exists(SAVE_DIR)) {
+                                        files.createWithDirs(SAVE_DIR);
+                                    }
+                                    var path = files.path(SAVE_DIR + scriptFile);
+                                    files.write(path, scriptCode);
+                                    ui.run(function () {
+                                        toastLog("脚本已保存: " + path);
+                                    });
+                                } catch (e) {
+                                    ui.run(function () {
+                                        toastLog("保存失败: " + e.message);
+                                    });
+                                }
+                            });
+                        }
+                    }));
+                })(code, filename);
 
-                        const textView = new android.widget.TextView(context);
-                        textView.setText(icon + " [" + time + "] " + summary);
-                        textView.setTextSize(12);
-                        textView.setTextColor(colors.parseColor(color));
-                        card.addView(textView);
-                        container.addView(card);
-                    });
-                });
-            } catch (e) {
-                log("加载历史失败: " + e.message);
-            }
-        });
+                btnRow.addView(btnRun);
+                btnRow.addView(btnSave);
+                container.addView(btnRow);
+
+                ui.chatScroll.fullScroll(android.view.View.FOCUS_DOWN);
+            });
+        }
     }
 
-    ui.btnRefreshHistory.click(function () {
-        loadHistory();
-        toastLog("历史记录已刷新");
-    });
+    return {
+        show: showChatUI,
+    };
+})();
 
-    ui.btnClearHistory.click(function () {
-        ui.run(function () {
-            const container = ui.historyList;
-            container.removeAllViews();
-            const emptyText = new android.widget.TextView(context);
-            emptyText.setText("显示已清空（实际记录未删除）");
-            emptyText.setTextSize(13);
-            emptyText.setTextColor(colors.parseColor("#999999"));
-            emptyText.setGravity(android.view.Gravity.CENTER);
-            emptyText.setPadding(0, 32, 0, 0);
-            container.addView(emptyText);
-        });
-        toastLog("显示已清空");
-    });
-}
-
-module.exports = { show: showChatUI };
+module.exports = ChatUI;

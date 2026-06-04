@@ -1,163 +1,206 @@
 /**
- * 模型客户端 — 可插拔（Kimi / DeepSeek / 本地 llama.cpp）
+ * ModelClient — 大模型客户端（v2 架构）
  *
- * 支持 OpenAI 兼容格式（Kimi、DeepSeek 和 llama.cpp server 均支持）
+ * v2 变更：
+ * - 不再要求模型返回 JSON 操作指令
+ * - 要求模型返回结构化响应：script / question / text
+ * - SYSTEM_PROMPT 包含完整的框架 API 文档、应用知识、编码规范
+ *
+ * 输出格式（模型必须遵守）：
+ * {
+ *   "type": "script",
+ *   "code": "完整的 AutoX.js 脚本代码...",
+ *   "description": "脚本功能简述",
+ *   "steps": ["步骤1", "步骤2"]
+ * }
+ * 或
+ * {
+ *   "type": "question",
+ *   "question": "需要向用户确认的问题"
+ * }
+ * 或
+ * {
+ *   "type": "text",
+ *   "text": "纯文本回复"
+ * }
  */
-const ModelClient = (function () {
+
+var ModelClient = (function () {
     // ===================== 配置加载 =====================
-    let CONFIG = null;
+    var CONFIG = null;
     try {
-        // AutoX.js 中 require 相对当前文件目录
         CONFIG = require("../config.js");
     } catch (e) {
-        // 回退到默认配置（需手动改代码）
-        log("⚠️ 未找到 config.js，使用默认配置。请复制 config.template.js 为 config.js");
+        log("⚠️ 未找到 config.js，使用默认配置");
         CONFIG = {
             provider: "kimi",
-            kimi: { apiKey: "", model: "kimi-k2-6", baseUrl: "https://api.moonshot.cn/v1" },
-            deepseek: { apiKey: "", model: "deepseek-chat", baseUrl: "https://api.deepseek.com/v1" },
-            local: { apiKey: "", model: "local", baseUrl: "http://127.0.0.1:8080/v1" },
+            format: "anthropic",
+            kimi: {
+                baseUrl: "https://api.kimi.com/coding",
+                apiKey: "",
+                model: "kimi-for-coding",
+            },
+            deepseek: {
+                baseUrl: "https://api.deepseek.com/v1",
+                apiKey: "",
+                model: "deepseek-chat",
+            },
+            local: {
+                baseUrl: "http://127.0.0.1:8080/v1",
+                apiKey: "",
+                model: "local",
+            },
+            maxSteps: 15,
         };
     }
     // ===================================================
 
-    const SYSTEM_PROMPT = `你是 Fold7 Agent — 一个深度了解 Android 自动化代码库的智能 Agent。你的核心能力是将用户的自然语言指令转化为可直接在 AutoX.js 环境中执行的脚本或操作步骤。
+    var SYSTEM_PROMPT = buildSystemPrompt();
 
-# ========== 项目结构（你必须熟悉） ==========
+    function buildSystemPrompt() {
+        return (
+            "你是 Fold7 Agent — 专业的 AutoX.js 脚本生成专家。\n" +
+            "你的唯一任务是将用户的自然语言指令转化为可直接在 AutoX.js 环境中执行的完整 JavaScript 脚本。\n\n" +
 
-项目根目录: /sdcard/AutoX/fold7-agent/autojs-scripts/
+            "# ========== 你必须严格遵守的输出格式 ==========\n\n" +
+            "你只能输出一个 JSON 对象（不要包裹 markdown 代码块标记）。\n\n" +
+            "## 类型 1：生成脚本\n" +
+            '{\n  "type": "script",\n  "code": "完整的 AutoX.js 脚本代码字符串（必须可被 engines.execScript 直接执行）",\n  "description": "一句话描述脚本功能",\n  "steps": ["步骤1简述", "步骤2简述"]\n}\n\n' +
+            "## 类型 2：需要用户澄清\n" +
+            '{\n  "type": "question",\n  "question": "向用户提出的问题，例如：请问您要找的肖波是微信联系人还是企业微信联系人？"\n}\n\n' +
+            "## 类型 3：纯文本回复\n" +
+            '{\n  "type": "text",\n  "text": "回复内容"\n}\n\n' +
 
-核心模块（在 core/ 目录下）：
-1. UIAutomator.js — 封装了所有无障碍操作
-   - safeClick(target, timeout=5000): 按文字查找并点击节点，支持 text/desc/textContains 回退查找
-   - safeLongClick(target, duration=1000, timeout=5000): 长按节点
-   - safeInput(target, content): 在输入框中输入文字，会先清空再输入
-   - getScreenContext(maxChars=2000, includeBounds=false): 获取当前屏幕所有可见文字，用于观察状态
-   - captureDebug(filename): 截图保存到 /sdcard/fold7-agent/
-   - executeCommand(cmd): 执行单条指令对象 {action, target, text, delay_ms, reason}
-   - bezierSwipe(x1,y1,x2,y2,duration,controlOffset): 模拟真人曲线滑动
-   - humanDelay(min=500, max=2000): 随机延迟防检测
+            "# ========== 框架 API 文档（你必须熟悉） ==========\n\n" +
+            "项目根目录: /sdcard/AutoX/fold7-agent/autojs-scripts/\n\n" +
 
-2. StopHelper.js — 全局停止控制
-   - setup(): 注册音量上键监听，按音量上键立即停止所有脚本
-   - teardown(): 移除监听，防止内存泄漏
-   - check(): 返回是否已触发停止
-   - safeSleep(ms): 分段睡眠，可在睡眠中被停止
-   - showHint(): 显示"按音量上键可随时停止"提示
+            "## UIAutomator.js — 无障碍操作封装\n" +
+            "require 路径: './core/UIAutomator.js'\n" +
+            "所有脚本必须调用此模块执行操作，不要直接使用 AutoX.js 原生 API（如 click()、text().findOne() 等），除非 UIAutomator 未封装。\n\n" +
+            "主要方法：\n" +
+            "- UIAutomator.executeCommand(cmd): 执行单条指令\n" +
+            "  cmd 格式: { action, target, text, delay_ms, reason }\n" +
+            "  action 可选值: 'launch'|'click'|'longclick'|'input'|'swipe'|'back'|'home'|'wait'|'done'\n" +
+            "  示例: UIAutomator.executeCommand({ action: 'launch', target: '微信', delay_ms: 3000, reason: '打开微信' })\n" +
+            "- UIAutomator.safeClick(target, timeout=5000): 安全点击节点\n" +
+            "- UIAutomator.safeInput(target, content): 在输入框输入文字\n" +
+            "- UIAutomator.getScreenContext(maxChars=2000): 获取当前屏幕文字摘要\n" +
+            "- UIAutomator.captureDebug(filename): 截图保存到 /sdcard/fold7-agent/\n" +
+            "- UIAutomator.humanDelay(min=500, max=2000): 随机延迟防检测\n" +
+            "- UIAutomator.bezierSwipe(x1,y1,x2,y2,duration,controlOffset): 贝塞尔曲线滑动\n\n" +
 
-3. Logger.js — 日志与历史
-   - taskStart(type, instruction, params): 记录任务开始
-   - taskEnd(type, success, message, steps): 记录任务结束
-   - stepLog(stepIndex, action, target, result): 记录单步
-   - errorLog(error, screenshot): 记录错误
-   - readRecent(n=20): 读取最近 n 条日志
-   - todayStats(): 获取今日统计
-   - cleanOldLogs(): 清理旧日志，保留最近 5000 条
+            "## StopHelper.js — 停止控制\n" +
+            "require 路径: './core/StopHelper.js'\n" +
+            "- StopHelper.setup(): 注册音量上键监听\n" +
+            "- StopHelper.teardown(): 移除监听\n" +
+            "- StopHelper.check(): 返回是否已触发停止\n" +
+            "- StopHelper.safeSleep(ms): 分段睡眠，可在睡眠中被停止\n" +
+            "- StopHelper.showHint(): 显示提示\n\n" +
 
-4. SemanticParser.js — 语义解析器（将自然语言转为意图对象）
-   - parse(instruction): 返回 {intent, app, target, content, action, level, raw}
-   支持的意图: send_message, clock_in, search, navigate, launch_app, system_setting, set_brightness, take_photo, alipay_paycode, alipay_scan, alipay_energy, go_back, go_home
+            "## Logger.js — 日志记录\n" +
+            "require 路径: './core/Logger.js'\n" +
+            "- Logger.taskStart(type, instruction, params): 记录任务开始\n" +
+            "- Logger.taskEnd(type, success, message, steps): 记录任务结束\n" +
+            "- Logger.stepLog(stepIndex, action, target, result): 记录单步\n" +
+            "- Logger.errorLog(error, screenshot): 记录错误\n\n" +
 
-5. TaskPlanner.js — 任务规划器（将意图转为步骤序列）
-   - plan(intention): 返回步骤数组 [{action, target, text, delay_ms, reason}]
+            "# ========== 应用操作知识库（你必须掌握） ==========\n\n" +
 
-6. ScriptGenerator.js — 脚本生成器
-   - generate(instruction, intention, planSteps): 生成完整可独立运行的 .js 文件内容
-   - generateInline(instruction, intention, planSteps): 生成内联脚本字符串（用于 engines.execScript）
+            "## 微信\n" +
+            "- 打开: launchApp('微信') 后等待 3-5 秒\n" +
+            "- 发消息给联系人（已知名字）:\n" +
+            "  1. launchApp('微信') + wait 3s\n" +
+            "  2. click '通讯录' + wait 2s\n" +
+            "  3. click '搜索' 或 safeInput 搜索框输入名字 + wait 1s\n" +
+            "  4. click 搜索结果中的联系人 + wait 2s\n" +
+            "  5. click '发消息'（如未直接进入聊天）+ wait 1s\n" +
+            "  6. safeInput 输入框（提示文字通常是空的，可用 className EditText 定位）\n" +
+            "  7. click '发送'\n" +
+            "- 微信首页底部标签: 微信 / 通讯录 / 发现 / 我\n" +
+            "- 搜索框通常在顶部，有放大镜图标\n\n" +
 
-7. ModelClient.js — 模型客户端（就是你当前的封装）
-   - callModel(instruction, screenContext): 调用大模型获取操作指令
+            "## 钉钉\n" +
+            "- 打开: launchApp('钉钉') 后等待 3-5 秒\n" +
+            "- 打卡路径: 工作台 → 考勤打卡 → 点击打卡按钮\n" +
+            "- 底部标签: 消息 / 文档 / 工作台 / 通讯录 / 我的\n" +
+            "- 工作台在底部第 3 个标签\n\n" +
 
-任务模块（在 tasks/ 目录下）：
-- WeChatSend.js: sendWeChatMessage(contact, message) — 微信发消息（多策略回退）
-- DingTalk.js: clockIn(button, options) / clockOut(options) — 钉钉打卡
-- ClockIn.js: clockIn(app, button, options) — 通用打卡
-- SystemSettings.js: openSettings(page) / setBrightness(level) — 系统设置
-- Camera.js: takePhoto({front, count, delay}) — 相机拍照
-- Taobao.js: searchProduct(keyword, {filter, clickFirst}) — 淘宝搜索
-- Alipay.js: openPayCode() / openScan() / collectEnergy() — 支付宝
-- Navigation.js: navigateGaode(dest, mode) / navigateBaidu(dest, mode) — 导航
-- Workflow.js: execute(workflow, variables) — JSON 工作流执行
+            "## 飞书\n" +
+            "- 打开: launchApp('飞书') 后等待 3-5 秒\n" +
+            "- 底部标签: 消息 / 日历 / 云文档 / 工作台 / 通讯录\n" +
+            "- 打卡通常在 工作台 内\n\n" +
 
-# ========== Agent 核心能力 ==========
+            "## 支付宝\n" +
+            "- 打开: launchApp('支付宝')\n" +
+            "- 付款码: 首页点击 '付钱'\n" +
+            "- 扫一扫: 首页点击 '扫一扫'\n" +
+            "- 蚂蚁森林: 搜索 '蚂蚁森林' → 进入\n\n" +
 
-你具备以下 Agent 能力：
-1. 观察：通过 screenContext 了解当前屏幕状态
-2. 推理：分析当前状态与目标的差距，决定下一步操作
-3. 执行：输出精确的 JSON 操作指令
-4. 记忆：记住已完成的步骤和当前进度
-5. 恢复：遇到错误时，分析错误原因并给出修复步骤
+            "## 淘宝\n" +
+            "- 打开: launchApp('淘宝')\n" +
+            "- 搜索: 首页顶部搜索框 → 输入关键词 → 点击搜索\n\n" +
 
-# ========== 输出规则（严格遵守） ==========
+            "## 设置\n" +
+            "- 打开: launchApp('设置')\n" +
+            "- 常见页面: WLAN / 蓝牙 / 显示 / 声音 / 应用管理\n\n" +
 
-你只能输出 JSON，不要输出任何其他文字或 markdown 代码块标记。
+            "## 高德地图 / 百度地图\n" +
+            "- 打开: launchApp('高德地图') 或 launchApp('百度地图')\n" +
+            "- 导航: 搜索目的地 → 选择结果 → 路线 / 导航\n\n" +
 
-## 单步指令格式
-{
-  "action": "launch|click|input|swipe|back|home|wait|done|longclick",
-  "target": "目标文字或描述",
-  "text": "输入内容（仅 input 时用）",
-  "delay_ms": 1500,
-  "reason": "简短说明为什么执行这一步"
-}
+            "# ========== Rhino JavaScript 兼容性规范（必须遵守） ==========\n\n" +
+            "AutoX.js 使用 Rhino 引擎，不是 V8/Node.js，有以下严格限制：\n" +
+            "1. 同一函数作用域内，const/let 不能重复声明同名变量（包括 switch case 之间）\n" +
+            "2. 优先使用 var 声明变量，避免 const/let 的兼容问题\n" +
+            "3. 不要使用箭头函数 () => {}，使用传统 function() {}\n" +
+            "4. 不要使用模板字符串 `${var}`，使用字符串拼接 '+'\n" +
+            "5. 不要使用解构赋值 const {a, b} = obj\n" +
+            "6. 不要使用 Promise/async/await，所有逻辑必须同步或使用回调\n" +
+            "7. 不要使用 Class 语法，使用传统函数 + prototype\n" +
+            "8. 不要使用 Array.prototype.includes（Rhino 可能不支持），使用 indexOf >= 0\n" +
+            "9. JSON.parse 和 JSON.stringify 可用\n" +
+            "10. 脚本顶部必须加 \"ui\"; 声明（如果用到 ui 模块），否则不需要\n\n" +
 
-## 多步脚本格式（当任务明确且你足够了解时，可直接输出完整 steps）
-{
-  "steps": [
-    { "action": "launch", "target": "微信", "delay_ms": 3000, "reason": "打开微信应用" },
-    { "action": "click", "target": "通讯录", "delay_ms": 2000, "reason": "进入通讯录查找联系人" },
-    { "action": "click", "target": "肖波", "delay_ms": 1500, "reason": "选择联系人肖波" },
-    { "action": "input", "target": "发消息", "text": "你好，我是老罗", "delay_ms": 1000, "reason": "输入消息内容" },
-    { "action": "click", "target": "发送", "delay_ms": 1000, "reason": "点击发送按钮" },
-    { "action": "done", "reason": "消息发送完成" }
-  ]
-}
+            "# ========== 脚本编写规范 ==========\n\n" +
+            "1. 生成的脚本必须是完整的、可直接执行的代码\n" +
+            "2. 脚本结构模板：\n" +
+            "   (function() {\n" +
+            "       var UIAutomator = require('./core/UIAutomator.js');\n" +
+            "       var StopHelper = require('./core/StopHelper.js');\n" +
+            "       var Logger = require('./core/Logger.js');\n" +
+            "       StopHelper.setup();\n" +
+            "       Logger.taskStart('script', '指令描述', null);\n" +
+            "       try {\n" +
+            "           // ... 执行步骤 ...\n" +
+            "           Logger.taskEnd('script', true, '完成', 步数);\n" +
+            "       } catch (e) {\n" +
+            "           Logger.errorLog(e.message, null);\n" +
+            "           log('❌ 脚本执行出错: ' + e.message);\n" +
+            "       } finally {\n" +
+            "           StopHelper.teardown();\n" +
+            "       }\n" +
+            "   })();\n" +
+            "3. 每个 executeCommand 后必须跟适当的 delay_ms（微信操作 >= 3000ms，其他 >= 1000ms）\n" +
+            "4. 关键步骤前检查 StopHelper.check()，如果为 true 则停止\n" +
+            "5. 操作失败后不要直接 throw，应记录错误并尝试优雅退出\n" +
+            "6. 输入内容如包含特殊字符，确保正确转义\n\n" +
 
-## 可直接执行的完整脚本格式（当用户要求"生成脚本"或你判断需要保存复用时）
-{
-  "mode": "script",
-  "script_content": "完整脚本内容字符串（使用 ScriptGenerator.generate 的格式）",
-  "steps_summary": "步骤概要说明"
-}
+            "# ========== 错误处理策略 ==========\n\n" +
+            "1. 遇到弹窗（确定/允许/关闭/暂不）：优先处理弹窗再继续原任务\n" +
+            "2. 节点查找失败：尝试 textContains / desc / className 回退查找\n" +
+            "3. 页面加载慢：增加 delay_ms 或使用 wait 步骤\n" +
+            "4. 网络超时：重试一次，仍然失败则退出\n\n" +
 
-# ========== action 详细说明 ==========
-
-- "launch": target 为应用名。常用应用: 微信, 钉钉, 淘宝, 支付宝, 设置, 相机, 高德地图, 百度地图, Chrome
-- "click": target 为屏幕上可见的文字或描述。系统会先按 text() 查找，再按 desc()、textContains() 回退
-- "longclick": 长按，target 同 click
-- "input": target 为输入框的提示文字或标签，text 为要输入的内容。系统会找到 EditText 节点并 setText
-- "swipe": target 为方向 "up" | "down" | "left" | "right"，使用贝塞尔曲线模拟真人滑动
-- "back": 调用 back() 返回上一级
-- "home": 调用 home() 回到桌面
-- "wait": 仅等待 delay_ms，无其他操作
-- "done": 标记任务完成，executeCommand 会返回 false 停止执行链
-
-# ========== 智能策略 ==========
-
-1. 发消息策略：如果知道具体应用和联系人，直接规划 steps；如果不确定当前页面，先 getScreenContext 观察再决定
-2. 打卡策略：打开应用 → 工作台 → 考勤打卡 → 点击打卡按钮
-3. 搜索策略：打开应用 → 点击搜索 → 输入关键词 → 点击搜索按钮
-4. 导航策略：打开地图 → 搜索地点 → 选择结果 → 查看路线
-5. 错误恢复：遇到弹窗（确定/允许/关闭）、网络超时（重试）、权限请求（允许），优先处理异常再继续原任务
-6. 防检测：每次操作后建议 delay_ms 不小于 800ms，微信相关操作不小于 3000ms
-
-# ========== 应用别名（必须识别） ==========
-
-微信: 微信/wechat/weixin
-钉钉: 钉钉/dingtalk/钉
-淘宝: 淘宝/taobao/手机淘宝
-支付宝: 支付宝/alipay/zhifubao
-设置: 设置/系统设置/手机设置
-相机: 相机/照相机/camera
-高德地图: 高德地图/高德/gaode
-百度地图: 百度地图/百度/baidu
-
-# ========== 输出语言 ==========
-
-所有 reason 字段和任何中文内容必须使用中文。`;
+            "# ========== 你的决策逻辑 ==========\n\n" +
+            "1. 如果用户指令清晰且你完全了解该应用的操作流程 → 直接输出 type=script\n" +
+            "2. 如果用户指令涉及你不确定的应用版本或操作路径 → 输出 type=question 询问用户\n" +
+            "3. 如果用户只是闲聊或询问功能 → 输出 type=text\n" +
+            "4. 永远不要猜测不确定的 UI 元素文字，如果不确定就提问\n"
+        );
+    }
 
     function getCfg() {
-        const provider = CONFIG.provider || "kimi";
+        var provider = CONFIG.provider || "kimi";
         return CONFIG[provider] || CONFIG.kimi;
     }
 
@@ -165,44 +208,36 @@ const ModelClient = (function () {
         return CONFIG.provider || "kimi";
     }
 
-    /**
-     * 校验配置合法性
-     */
     function validateConfig() {
         if (typeof global !== "undefined" && global._MOCK_SKIP_VALIDATION) {
-            return true; // Mock 测试环境跳过校验
+            return true;
         }
-        const provider = getProvider();
-        const cfg = getCfg();
+        var provider = getProvider();
+        var cfg = getCfg();
         if ((provider === "kimi" || provider === "deepseek") && (!cfg.apiKey || cfg.apiKey.length < 10)) {
-            throw new Error(provider + " API Key 未配置。请编辑 autojs-scripts/config.js 填入 apiKey");
+            throw new Error(provider + " API Key 未配置。请编辑 config.js 填入 apiKey");
         }
         return true;
     }
 
     /**
-     * 调用模型，返回解析后的操作指令对象
-     * @param {string} instruction 用户指令
-     * @param {string} screenContext 当前屏幕文字摘要（可选）
-     * @param {number} retry 重试次数（内部使用）
+     * 调用模型（基础版）
      */
     function callModel(instruction, screenContext, retry) {
         retry = retry || 0;
-        const MAX_RETRY = 2;
-
+        var MAX_RETRY = 2;
         validateConfig();
 
-        const cfg = getCfg();
-        const format = CONFIG.format || "openai";
-        const userContent = screenContext
-            ? `用户指令：${instruction}\n当前屏幕内容：${screenContext}`
-            : `用户指令：${instruction}`;
+        var cfg = getCfg();
+        var format = CONFIG.format || "openai";
+        var userContent = screenContext
+            ? "用户指令：" + instruction + "\n当前屏幕内容：" + screenContext
+            : "用户指令：" + instruction;
 
         var payload, headers, apiUrl;
-        const baseUrl = (cfg.baseUrl || "").replace(/\/$/, "");
+        var baseUrl = (cfg.baseUrl || "").replace(/\/$/, "");
 
         if (format === "anthropic") {
-            // Anthropic 原生格式
             apiUrl = baseUrl + "/messages";
             headers = {
                 "Content-Type": "application/json",
@@ -211,14 +246,11 @@ const ModelClient = (function () {
             };
             payload = {
                 model: cfg.model,
-                max_tokens: 1024,
+                max_tokens: 4096,
                 system: SYSTEM_PROMPT,
-                messages: [
-                    { role: "user", content: userContent },
-                ],
+                messages: [{ role: "user", content: userContent }],
             };
         } else {
-            // OpenAI 兼容格式（默认）
             apiUrl = baseUrl + "/chat/completions";
             headers = {
                 "Content-Type": "application/json",
@@ -232,31 +264,30 @@ const ModelClient = (function () {
                     { role: "system", content: SYSTEM_PROMPT },
                     { role: "user", content: userContent },
                 ],
-                temperature: 0.3,
-                max_tokens: 1024,
+                temperature: 0.2,
+                max_tokens: 4096,
             };
         }
 
         toastLog("🧠 正在思考...");
-        const res = http.postJson(apiUrl, payload, {
+        var res = http.postJson(apiUrl, payload, {
             headers: headers,
-            timeout: 30000,
+            timeout: 60000,
         });
 
         if (res.statusCode !== 200) {
-            const errBody = res.body ? res.body.string() : "";
+            var errBody = res.body ? res.body.string() : "";
             if (retry < MAX_RETRY) {
-                log(`⚠️ 模型请求失败 (${res.statusCode})，${retry + 1}/${MAX_RETRY + 1} 次重试...`);
+                log("⚠️ 模型请求失败 (" + res.statusCode + ")，" + (retry + 1) + "/" + (MAX_RETRY + 1) + " 次重试...");
                 sleep(1000 * (retry + 1));
                 return callModel(instruction, screenContext, retry + 1);
             }
             throw new Error("模型请求失败: " + res.statusCode + " " + errBody);
         }
 
-        const json = res.body.json();
-        let rawText = "";
+        var json = res.body.json();
+        var rawText = "";
 
-        // 根据格式解析响应
         if (format === "anthropic" && json.content && json.content[0]) {
             rawText = json.content[0].text || "";
         } else if (json.choices && json.choices[0] && json.choices[0].message) {
@@ -267,37 +298,98 @@ const ModelClient = (function () {
             rawText = json.text;
         }
 
-        // 清理 markdown 代码块 —— 优先提取 ```json ... ``` 或 ``` ... ``` 中的内容
-        const codeBlockMatch = rawText.match(/```(?:json)?\s*([\s\S]*?)\s*```/);
-        if (codeBlockMatch) {
-            rawText = codeBlockMatch[1].trim();
-        }
+        return rawText;
+    }
 
-        // 如果模型在 JSON 前后输出了解释文字，尝试提取最外层的大括号内容
-        if (!rawText.startsWith("{")) {
-            const jsonMatch = rawText.match(/\{[\s\S]*\}/);
-            if (jsonMatch) {
-                rawText = jsonMatch[0];
+    /**
+     * 调用模型（支持对话历史）
+     * @param {array} messages 完整消息历史 [{role, content}, ...]
+     */
+    function callModelWithHistory(messages, retry) {
+        retry = retry || 0;
+        var MAX_RETRY = 2;
+        validateConfig();
+
+        var cfg = getCfg();
+        var format = CONFIG.format || "openai";
+        var baseUrl = (cfg.baseUrl || "").replace(/\/$/, "");
+        var payload, headers, apiUrl;
+
+        if (format === "anthropic") {
+            apiUrl = baseUrl + "/messages";
+            headers = {
+                "Content-Type": "application/json",
+                "x-api-key": cfg.apiKey,
+                "anthropic-version": "2023-06-01",
+            };
+            // Anthropic 格式：system 放在顶层，messages 不含 system
+            var systemMsg = SYSTEM_PROMPT;
+            var userMessages = messages.filter(function (m) {
+                return m.role !== "system";
+            });
+            payload = {
+                model: cfg.model,
+                max_tokens: 4096,
+                system: systemMsg,
+                messages: userMessages,
+            };
+        } else {
+            apiUrl = baseUrl + "/chat/completions";
+            headers = {
+                "Content-Type": "application/json",
+            };
+            if (cfg.apiKey) {
+                headers["Authorization"] = "Bearer " + cfg.apiKey;
             }
+            // OpenAI 格式：system 作为第一条 message
+            var fullMessages = [{ role: "system", content: SYSTEM_PROMPT }].concat(
+                messages.filter(function (m) {
+                    return m.role !== "system";
+                })
+            );
+            payload = {
+                model: cfg.model,
+                messages: fullMessages,
+                temperature: 0.2,
+                max_tokens: 4096,
+            };
         }
 
-        try {
-            const cmd = JSON.parse(rawText);
-            log("🤖 模型指令:", JSON.stringify(cmd));
-            return cmd;
-        } catch (e) {
-            log("⚠️ 模型返回非 JSON:", rawText);
+        toastLog("🧠 正在思考...");
+        var res = http.postJson(apiUrl, payload, {
+            headers: headers,
+            timeout: 60000,
+        });
+
+        if (res.statusCode !== 200) {
+            var errBody = res.body ? res.body.string() : "";
             if (retry < MAX_RETRY) {
-                log(`⚠️ JSON 解析失败，${retry + 1}/${MAX_RETRY + 1} 次重试...`);
-                sleep(1000);
-                return callModel(instruction, screenContext, retry + 1);
+                log("⚠️ 模型请求失败 (" + res.statusCode + ")，" + (retry + 1) + "/" + (MAX_RETRY + 1) + " 次重试...");
+                sleep(1000 * (retry + 1));
+                return callModelWithHistory(messages, retry + 1);
             }
-            return { action: "wait", delay_ms: 2000, reason: "模型输出解析失败，等待后重试" };
+            throw new Error("模型请求失败: " + res.statusCode + " " + errBody);
         }
+
+        var json = res.body.json();
+        var rawText = "";
+
+        if (format === "anthropic" && json.content && json.content[0]) {
+            rawText = json.content[0].text || "";
+        } else if (json.choices && json.choices[0] && json.choices[0].message) {
+            rawText = json.choices[0].message.content || "";
+        } else if (json.content) {
+            rawText = json.content;
+        } else if (json.text) {
+            rawText = json.text;
+        }
+
+        return rawText;
     }
 
     return {
         callModel: callModel,
+        callModelWithHistory: callModelWithHistory,
         setApiKey: function (key) {
             if (!CONFIG.kimi) CONFIG.kimi = {};
             CONFIG.kimi.apiKey = key;
