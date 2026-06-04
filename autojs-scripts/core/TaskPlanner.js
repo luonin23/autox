@@ -17,7 +17,7 @@ function plan(intention) {
 
     switch (intent) {
         case "send_message": {
-            const app = intention.app || "微信";
+            var app = intention.app || "微信";
             const contact = intention.target;
             const content = intention.content || "";
 
@@ -69,7 +69,7 @@ function plan(intention) {
         }
 
         case "clock_in": {
-            const app = intention.app || "钉钉";
+            var app = intention.app || "钉钉";
             const button = intention.target || "上班打卡";
 
             steps.push({
@@ -104,7 +104,7 @@ function plan(intention) {
         }
 
         case "search": {
-            const app = intention.app || "淘宝";
+            var app = intention.app || "淘宝";
             const keyword = intention.target || "";
 
             steps.push({
@@ -140,7 +140,7 @@ function plan(intention) {
         }
 
         case "navigate": {
-            const app = intention.app || "高德地图";
+            var app = intention.app || "高德地图";
             const destination = intention.target || "";
 
             steps.push({
@@ -182,7 +182,7 @@ function plan(intention) {
         }
 
         case "launch_app": {
-            const app = intention.app || "";
+            var app = intention.app || "";
             steps.push({
                 action: "launch",
                 target: app,

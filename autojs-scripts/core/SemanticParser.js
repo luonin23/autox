@@ -99,8 +99,8 @@ function extractAppName(text) {
     for (let i = 0; i < patterns.length; i++) {
         const m = text.match(patterns[i]);
         if (m && m[1]) {
-            const app = resolveAppName(m[1].trim());
-            if (app) return app;
+            var matchedApp = resolveAppName(m[1].trim());
+            if (matchedApp) return matchedApp;
         }
     }
     return null;

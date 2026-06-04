@@ -417,6 +417,4 @@ function main() {
     }
 }
 
-main();
-
 })();
