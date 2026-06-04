@@ -46,8 +46,9 @@ function showConfigUI(onSave) {
             <input id="maxSteps" text="{{String(current.maxSteps || 15)}}" hint="15" inputType="number" marginBottom="16"/>
 
             <horizontal gravity="center">
-                <button id="btnSave" text="保存配置" style="Widget.AppCompat.Button.Colored" w="120"/>
-                <button id="btnCancel" text="取消" w="120" marginLeft="16"/>
+                <button id="btnTest" text="测试连接" w="100" marginRight="8"/>
+                <button id="btnSave" text="保存配置" style="Widget.AppCompat.Button.Colored" w="100"/>
+                <button id="btnCancel" text="取消" w="100" marginLeft="8"/>
             </horizontal>
 
             <text id="status" text="" textSize="12sp" textColor="#e74c3c" gravity="center" marginTop="12"/>
@@ -62,6 +63,43 @@ function showConfigUI(onSave) {
     } else {
         ui.provider.setSelection(0);
     }
+
+    ui.btnTest.click(function () {
+        const provider = ui.provider.getSelectedItemPosition() === 0 ? "kimi" : "local";
+        const apiKey = String(ui.kimiApiKey.getText() || "").trim();
+        const url = provider === "kimi"
+            ? "https://api.moonshot.cn/v1/chat/completions"
+            : String(ui.localUrl.getText() || "http://127.0.0.1:8080/v1/chat/completions").trim();
+
+        ui.status.setText("🔄 正在测试连接...");
+        threads.start(function () {
+            try {
+                let res;
+                if (provider === "kimi") {
+                    // 测试 Kimi：发送最小请求
+                    res = http.postJson(url, {
+                        model: "kimi-k2-6",
+                        messages: [{ role: "user", content: "hi" }],
+                        max_tokens: 1,
+                    }, {
+                        headers: { "Authorization": "Bearer " + apiKey, "Content-Type": "application/json" },
+                        timeout: 15000,
+                    });
+                } else {
+                    // 测试本地模型：GET 根路径或简单 POST
+                    res = http.get(url.replace("/v1/chat/completions", ""), { timeout: 5000 });
+                }
+
+                if (res.statusCode >= 200 && res.statusCode < 300) {
+                    ui.status.setText("✅ 连接成功 (" + res.statusCode + ")");
+                } else {
+                    ui.status.setText("❌ 连接失败: HTTP " + res.statusCode);
+                }
+            } catch (e) {
+                ui.status.setText("❌ 连接失败: " + e.message);
+            }
+        });
+    });
 
     ui.btnSave.click(function () {
         const provider = ui.provider.getSelectedItemPosition() === 0 ? "kimi" : "local";
