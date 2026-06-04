@@ -5,6 +5,7 @@
  */
 
 const UI = require("../core/UIAutomator.js");
+const StopHelper = require("../core/StopHelper.js");
 
 function sendWeChatMessage(contactName, message) {
     if (!contactName || !message) {
@@ -17,18 +18,22 @@ function sendWeChatMessage(contactName, message) {
     // 1. 打开微信
     launchApp("微信");
     UI.humanDelay(2500, 3500);
+    if (StopHelper.check()) return false;
 
     // 2. 确保在首页（处理可能的弹窗）
     handleWeChatPopup();
+    if (StopHelper.check()) return false;
 
     // 3. 尝试首页搜索
     let searchSuccess = searchFromHome(contactName);
+    if (StopHelper.check()) return false;
 
     // 4. 如果首页搜索失败，尝试通讯录搜索
     if (!searchSuccess) {
         log("🔄 首页搜索失败，尝试通讯录搜索");
         searchSuccess = searchFromContacts(contactName);
     }
+    if (StopHelper.check()) return false;
 
     if (!searchSuccess) {
         toastLog("⚠️ 未找到联系人: " + contactName);
@@ -37,6 +42,7 @@ function sendWeChatMessage(contactName, message) {
     }
 
     UI.humanDelay(2000, 3000);
+    if (StopHelper.check()) return false;
 
     // 5. 输入消息
     if (!inputChatMessage(message)) {
@@ -44,6 +50,7 @@ function sendWeChatMessage(contactName, message) {
         UI.captureDebug("wechat_input_not_found.png");
         return false;
     }
+    if (StopHelper.check()) return false;
 
     // 6. 点击发送
     UI.humanDelay(500, 1000);

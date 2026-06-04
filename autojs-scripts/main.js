@@ -16,6 +16,7 @@ if (typeof device === "undefined") {
 }
 
 // 导入模块
+const StopHelper = require("./core/StopHelper.js");
 const ModelClient = require("./core/ModelClient.js");
 const UIAutomator = require("./core/UIAutomator.js");
 const Logger = require("./core/Logger.js");
@@ -28,27 +29,7 @@ const Camera = require("./tasks/Camera.js");
 const Taobao = require("./tasks/Taobao.js");
 const Alipay = require("./tasks/Alipay.js");
 const Navigation = require("./tasks/Navigation.js");
-
-// ===================== 全局停止控制 =====================
-let _STOPPED = false;
-
-function setupStopHandler() {
-    if (typeof events === "undefined") return;
-    try {
-        events.observeKey();
-        events.onKeyDown("volume_up", function () {
-            toastLog("⏹️ 用户按音量上键，正在停止脚本...");
-            _STOPPED = true;
-            // 停止所有脚本（包括后台运行的）
-            if (typeof engines !== "undefined") {
-                engines.stopAll();
-            }
-        });
-        toast("🔊 按【音量上键】可随时停止脚本");
-    } catch (e) {
-        log("⚠️ 音量键监听设置失败:", e.message);
-    }
-}
+const ScreenshotCleaner = require("./core/ScreenshotCleaner.js");
 
 // 加载用户配置
 let CONFIG = null;
@@ -133,11 +114,11 @@ function runAgent(instruction) {
     let done = false;
     let recoveryCount = 0;
 
-    while (step < maxSteps && !done && !_STOPPED) {
+    while (step < maxSteps && !done && !StopHelper.check()) {
         step++;
         log("\n========== 步骤 " + step + " ==========");
 
-        if (_STOPPED) {
+        if (StopHelper.check()) {
             toastLog("⏹️ 脚本已停止");
             break;
         }
@@ -146,7 +127,7 @@ function runAgent(instruction) {
             const screenContext = UIAutomator.getScreenContext(1500);
             log("📱 屏幕内容:", screenContext.substring(0, 200) + "...");
 
-            if (_STOPPED) break;
+            if (StopHelper.check()) break;
 
             const cmd = ModelClient.callModel(instruction, screenContext);
             if (!cmd || !cmd.action) {
@@ -154,7 +135,7 @@ function runAgent(instruction) {
                 break;
             }
 
-            if (_STOPPED) break;
+            if (StopHelper.check()) break;
 
             Logger.stepLog(step, cmd.action, cmd.target, "ok");
             const shouldContinue = UIAutomator.executeCommand(cmd);
@@ -210,6 +191,9 @@ function runAgent(instruction) {
         toastLog("❌ 任务中断");
         Logger.taskEnd("agent", false, "任务中断", step);
     }
+
+    // 自动清理过期截图
+    try { ScreenshotCleaner.clean(); } catch (e) { /* ignore */ }
 }
 
 // ===================== 快速任务（不经过模型）=====================
@@ -281,6 +265,9 @@ function quickTask(taskType, params) {
     }
 
     Logger.taskEnd("quick", success, success ? "完成" : "失败", 1);
+
+    // 自动清理过期截图
+    try { ScreenshotCleaner.clean(); } catch (e) { /* ignore */ }
 }
 
 // ===================== 工作流执行 =====================
@@ -312,6 +299,9 @@ function runWorkflow(workflowInput) {
 
     const success = Workflow.execute(workflow, variables);
     Logger.taskEnd("workflow", success, success ? "完成" : "失败", (workflow.steps || []).length);
+
+    // 自动清理过期截图
+    try { ScreenshotCleaner.clean(); } catch (e) { /* ignore */ }
 }
 
 /**
@@ -329,7 +319,8 @@ function runWorkflowFromFile(filePath) {
 // ===================== 入口分发 =====================
 function main() {
     // 注册停止快捷键
-    setupStopHandler();
+    StopHelper.setup();
+    StopHelper.showHint();
 
     // 情况 1：工作流文件路径
     if (ARGS.workflowFile) {

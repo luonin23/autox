@@ -4,6 +4,7 @@
  */
 
 const UI = require("../core/UIAutomator.js");
+const StopHelper = require("../core/StopHelper.js");
 
 /**
  * 打开支付宝付款码
@@ -12,6 +13,7 @@ function openPayCode() {
     toastLog("💳 打开支付宝付款码");
     launchApp("支付宝");
     UI.humanDelay(3000, 4000);
+    if (StopHelper.check()) return false;
 
     handleAlipayPopup();
 
@@ -38,6 +40,7 @@ function openScan() {
     toastLog("📷 打开支付宝扫一扫");
     launchApp("支付宝");
     UI.humanDelay(3000, 4000);
+    if (StopHelper.check()) return false;
 
     handleAlipayPopup();
 
@@ -62,6 +65,7 @@ function collectEnergy() {
     toastLog("🌳 开始蚂蚁森林收能量");
     launchApp("支付宝");
     UI.humanDelay(3000, 4000);
+    if (StopHelper.check()) return false;
 
     handleAlipayPopup();
 
@@ -77,6 +81,7 @@ function collectEnergy() {
             UI.humanDelay(2000, 2500);
         }
     }
+    if (StopHelper.check()) return false;
 
     // 点击搜索结果
     let result = text("蚂蚁森林").findOne(5000);
@@ -84,12 +89,14 @@ function collectEnergy() {
     if (result && result.clickable()) {
         result.click();
         UI.humanDelay(4000, 5000);
+        if (StopHelper.check()) return false;
 
         // 查找可收取的能量球（通常是带有数字的圆形按钮）
         // 由于能量球没有固定文字，这里使用通用策略：查找所有可点击节点并尝试点击
         let energyNodes = classNameContains("Image").find();
         let collected = 0;
         energyNodes.forEach(function (node) {
+            if (StopHelper.check()) return;
             if (node.clickable() && node.bounds().width() > 50 && node.bounds().width() < 150) {
                 node.click();
                 UI.humanDelay(800, 1200);

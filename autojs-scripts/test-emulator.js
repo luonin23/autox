@@ -3,21 +3,9 @@
  * 用于在真机/模拟器上快速验证 AutoX.js 环境是否正常
  */
 
-// ===== 停止快捷键 =====
-let _TEST_STOPPED = false;
-if (typeof events !== "undefined") {
-    try {
-        events.observeKey();
-        events.onKeyDown("volume_up", function () {
-            toastLog("⏹️ 按音量上键停止测试");
-            _TEST_STOPPED = true;
-            if (typeof engines !== "undefined") engines.stopAll();
-        });
-        toast("🔊 按【音量上键】可停止测试");
-    } catch (e) {
-        console.log("音量键监听失败:", e.message);
-    }
-}
+const StopHelper = require("./core/StopHelper.js");
+StopHelper.setup();
+StopHelper.showHint();
 
 // 1. 基础信息
 toast("🧪 Fold7 Agent 模拟器测试开始");
@@ -45,7 +33,7 @@ try {
     if (typeof auto !== "undefined" && auto.service) {
         // 使用 findOne 带超时，避免 find() 在无节点时阻塞
         let attempt = 0;
-        while (attempt < 3 && !_TEST_STOPPED) {
+        while (attempt < 3 && !StopHelper.check()) {
             let n = classNameContains("").findOne(2000);
             if (n) {
                 nodes = classNameContains("").find();
@@ -68,7 +56,7 @@ try {
     console.log("读取屏幕错误:", e.message);
 }
 
-if (_TEST_STOPPED) {
+if (StopHelper.check()) {
     toast("⏹️ 测试已停止");
     console.log("=== 测试被用户中断 ===");
     exit;
@@ -87,7 +75,7 @@ try {
 }
 
 // 6. HTTP 请求测试（可选，带超时）
-if (!_TEST_STOPPED) {
+if (!StopHelper.check()) {
     try {
         let res = http.get("https://api.moonshot.cn", {
             timeout: 15000,
@@ -99,7 +87,7 @@ if (!_TEST_STOPPED) {
     }
 }
 
-if (_TEST_STOPPED) {
+if (StopHelper.check()) {
     toast("⏹️ 测试已停止");
     console.log("=== 测试被用户中断 ===");
 } else {

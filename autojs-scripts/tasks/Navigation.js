@@ -4,6 +4,7 @@
  */
 
 const UI = require("../core/UIAutomator.js");
+const StopHelper = require("../core/StopHelper.js");
 
 /**
  * 高德地图导航
@@ -21,6 +22,7 @@ function navigateGaode(destination, mode) {
 
     launchApp("高德地图");
     UI.humanDelay(4000, 5000);
+    if (StopHelper.check()) return false;
 
     handleMapPopup();
 
@@ -46,6 +48,7 @@ function navigateGaode(destination, mode) {
         toastLog("⚠️ 未找到输入框");
         return false;
     }
+    if (StopHelper.check()) return false;
 
     // 3. 点击搜索结果中的第一个
     let result = text(destination).findOne(5000);
@@ -61,6 +64,7 @@ function navigateGaode(destination, mode) {
             UI.humanDelay(3000, 4000);
         }
     }
+    if (StopHelper.check()) return false;
 
     // 4. 选择出行方式
     let modeMap = {
@@ -109,6 +113,7 @@ function navigateBaidu(destination, mode) {
 
     launchApp("百度地图");
     UI.humanDelay(4000, 5000);
+    if (StopHelper.check()) return false;
 
     handleMapPopup();
 
@@ -126,6 +131,7 @@ function navigateBaidu(destination, mode) {
             UI.humanDelay(2000, 2500);
         }
     }
+    if (StopHelper.check()) return false;
 
     let result = text(destination).findOne(5000);
     if (!result) result = textContains(destination).findOne(3000);

@@ -4,6 +4,7 @@
  */
 
 const UI = require("../core/UIAutomator.js");
+const StopHelper = require("../core/StopHelper.js");
 
 /**
  * 淘宝搜索商品
@@ -24,6 +25,7 @@ function searchProduct(keyword, options) {
     // 1. 打开淘宝
     launchApp("手机淘宝");
     UI.humanDelay(3000, 4000);
+    if (StopHelper.check()) return false;
 
     // 2. 处理弹窗（红包、升级等）
     handlePopup();
@@ -51,6 +53,7 @@ function searchProduct(keyword, options) {
         toastLog("⚠️ 未找到搜索输入框");
         return false;
     }
+    if (StopHelper.check()) return false;
 
     // 5. 点击搜索按钮
     let searchBtn = text("搜索").findOne(3000);
@@ -68,10 +71,12 @@ function searchProduct(keyword, options) {
     if (options.filter) {
         applyFilter(options.filter);
     }
+    if (StopHelper.check()) return false;
 
     // 7. 点击第一个商品（如果指定了）
     if (options.clickFirst) {
         UI.humanDelay(2000, 3000);
+        if (StopHelper.check()) return false;
         let firstItem = descContains("商品").findOne(5000);
         if (!firstItem) {
             // 淘宝商品列表节点通常有特定特征

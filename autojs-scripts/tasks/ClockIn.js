@@ -1,3 +1,5 @@
+const StopHelper = require("../core/StopHelper.js");
+
 /**
  * 定时打卡任务
  * 支持：打开指定 App，查找打卡按钮并点击
@@ -12,7 +14,8 @@ function clockIn(appName, buttonText, options) {
 
     // 1. 打开应用
     launchApp(appName);
-    sleep(afterDelay);
+    StopHelper.safeSleep(afterDelay);
+    if (StopHelper.check()) return false;
 
     // 2. 查找打卡按钮
     let btn = text(buttonText).findOne(timeout);
@@ -23,7 +26,7 @@ function clockIn(appName, buttonText, options) {
     if (btn && btn.clickable()) {
         btn.click();
         toastLog("✅ 已点击打卡按钮: " + buttonText);
-        sleep(2000);
+        StopHelper.safeSleep(2000);
         return true;
     } else {
         toastLog("⚠️ 未找到打卡按钮: " + buttonText);
@@ -38,6 +41,10 @@ function clockIn(appName, buttonText, options) {
 function clockInAdvanced(steps) {
     toastLog("⏰ 开始高级打卡流程");
     for (let i = 0; i < steps.length; i++) {
+        if (StopHelper.check()) {
+            toastLog("⏹️ 打卡流程已停止");
+            return;
+        }
         const step = steps[i];
         log("步骤 " + (i + 1) + ":", step.action, step.target);
 
@@ -58,10 +65,10 @@ function clockInAdvanced(steps) {
                 swipe(device.width / 2, device.height * 0.8, device.width / 2, device.height * 0.2, 500);
                 break;
             case "wait":
-                sleep(step.delay || 2000);
+                StopHelper.safeSleep(step.delay || 2000);
                 break;
         }
-        sleep(step.delay || 1500);
+        StopHelper.safeSleep(step.delay || 1500);
     }
     toastLog("✅ 打卡流程结束");
 }

@@ -4,6 +4,7 @@
  */
 
 const UI = require("../core/UIAutomator.js");
+const StopHelper = require("../core/StopHelper.js");
 
 /**
  * 打开相机并拍照
@@ -21,6 +22,7 @@ function takePhoto(options) {
     toastLog("📷 打开相机");
     launchApp("相机");
     UI.humanDelay(2500, 3500);
+    if (StopHelper.check()) return false;
 
     // 切换前置/后置摄像头（如果需要）
     if (useFront) {
@@ -30,9 +32,11 @@ function takePhoto(options) {
     }
 
     UI.humanDelay(1000, 1500);
+    if (StopHelper.check()) return false;
 
     // 拍照
     for (let i = 0; i < count; i++) {
+        if (StopHelper.check()) return false;
         if (i > 0) {
             log("📷 连拍 " + (i + 1) + "/" + count);
             UI.humanDelay(1500, 2000);
@@ -53,7 +57,7 @@ function takePhoto(options) {
         }
 
         toastLog("📸 已拍照");
-        sleep(delay);
+        StopHelper.safeSleep(delay);
     }
 
     return true;

@@ -4,6 +4,7 @@
  */
 
 const UI = require("../core/UIAutomator.js");
+const StopHelper = require("../core/StopHelper.js");
 
 /**
  * 钉钉快速打卡
@@ -19,11 +20,12 @@ function dingTalkClockIn(buttonText, options) {
 
     // 1. 打开钉钉
     launchApp("钉钉");
-    sleep(5000);
+    StopHelper.safeSleep(5000);
 
     // 2. 等待首页加载（尝试多种特征）
     let loaded = false;
     for (let i = 0; i < 5; i++) {
+        if (StopHelper.check()) return false;
         if (text("消息").exists() || text("工作台").exists() || desc("工作台").exists()) {
             loaded = true;
             break;
@@ -41,15 +43,17 @@ function dingTalkClockIn(buttonText, options) {
     if (!workbench) workbench = desc("工作台").findOne(3000);
     if (workbench && workbench.clickable()) {
         workbench.click();
-        sleep(3000);
+        StopHelper.safeSleep(3000);
     } else {
         // 备用：通过底部导航点击
         let navWorkbench = descContains("工作台").findOne(3000);
         if (navWorkbench && navWorkbench.clickable()) {
             navWorkbench.click();
-            sleep(3000);
+            StopHelper.safeSleep(3000);
         }
     }
+
+    if (StopHelper.check()) return false;
 
     // 4. 查找考勤打卡入口
     let attendance = text("考勤打卡").findOne(timeout);
@@ -58,14 +62,18 @@ function dingTalkClockIn(buttonText, options) {
 
     if (attendance && attendance.clickable()) {
         attendance.click();
-        sleep(5000); // 考勤页面加载较慢
+        StopHelper.safeSleep(5000); // 考勤页面加载较慢
     } else {
         toastLog("⚠️ 未找到考勤打卡入口");
         return false;
     }
 
+    if (StopHelper.check()) return false;
+
     // 5. 等待打卡页面
-    sleep(3000);
+    StopHelper.safeSleep(3000);
+
+    if (StopHelper.check()) return false;
 
     // 6. 查找并点击打卡按钮
     let btn = text(buttonText).findOne(timeout);
@@ -77,7 +85,7 @@ function dingTalkClockIn(buttonText, options) {
         UI.humanDelay(800, 1500);
         btn.click();
         toastLog("✅ 已点击: " + buttonText);
-        sleep(3000);
+        StopHelper.safeSleep(3000);
 
         // 7. 处理可能的确认弹窗
         let confirmBtn = text("确定").findOne(3000);
@@ -85,7 +93,7 @@ function dingTalkClockIn(buttonText, options) {
         if (confirmBtn && confirmBtn.clickable()) {
             UI.humanDelay(500, 1000);
             confirmBtn.click();
-            sleep(2000);
+            StopHelper.safeSleep(2000);
         }
 
         return true;
