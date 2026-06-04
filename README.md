@@ -35,7 +35,19 @@ fold7-agent/
 │   │   ├── ModelClient.js       # 模型 API 封装（Kimi / Local）
 │   │   ├── UIAutomator.js       # 无障碍操作封装
 │   │   ├── Logger.js            # 📊 执行日志与统计
-│   │   └── ConfigUI.js          # 🎛️ 可视化配置页面
+│   │   ├── ConfigUI.js          # 🎛️ 可视化配置页面
+│   │   ├── StopHelper.js        # ⏹️ 统一停止控制（音量上键）
+│   │   └── ScreenshotCleaner.js # 🧹 截图自动清理
+│   ├── tasks/
+│   │   ├── WeChatSend.js        # 微信发消息（多策略回退）
+│   │   ├── ClockIn.js           # 通用定时打卡
+│   │   ├── DingTalk.js          # 钉钉专用打卡
+│   │   ├── SystemSettings.js    # 系统设置（WiFi/亮度等）
+│   │   ├── Camera.js            # 📷 相机拍照
+│   │   ├── Taobao.js            # 🛒 淘宝搜索
+│   │   ├── Alipay.js            # 💳 支付宝付款码/扫一扫/蚂蚁森林
+│   │   ├── Navigation.js        # 🗺️ 高德/百度地图导航
+│   │   └── Workflow.js          # 📋 JSON 工作流编排
 │   ├── tasks/
 │   │   ├── WeChatSend.js        # 微信发消息（多策略回退）
 │   │   ├── ClockIn.js           # 通用定时打卡
@@ -51,6 +63,7 @@ fold7-agent/
 │   │   └── runner.js            # 🧪 自动化测试运行器
 │   ├── config.template.js       # 配置模板
 │   ├── config.js                # 用户配置（含 API Key，不提交 Git）
+│   ├── history.js               # 📜 执行历史查看器（AutoX.js UI）
 │   └── main.js                  # 主入口
 ├── package.json                 # npm test / npm run mock
 └── README.md
@@ -229,6 +242,27 @@ npm test
 # - 综合场景: Agent 主循环完整流程
 ```
 
+## 工具脚本
+
+### 查看执行历史
+
+在 AutoX.js 中运行 `history.js`，查看最近 50 条执行记录和今日统计：
+
+```bash
+# AutoX.js 中打开并运行 history.js
+```
+
+界面显示：
+- 今日成功/失败次数统计
+- 时间线形式的任务记录（开始、步骤、错误、完成）
+
+### 截图自动清理
+
+每次任务结束后，自动清理 `/sdcard/fold7-agent/` 下的 debug 截图：
+- 保留最近 **50 张**
+- 删除超过 **7 天** 的旧截图
+- 防止截图堆积占用存储空间
+
 ## 安全与反检测
 
 - 每次操作加随机延迟（500ms ~ 2000ms）
@@ -238,6 +272,7 @@ npm test
 - 使用 Accessibility 读取节点文字，减少依赖坐标（适应不同分辨率）
 - **出错自动截图**保存现场（`/sdcard/fold7-agent/`）
 - **模型错误恢复**：执行失败时把错误信息+屏幕上下文反馈给模型，自动重试
+- **随时停止**：运行中按 **音量上键** 可立即停止脚本（所有任务模块均支持中断）
 
 ## License
 
