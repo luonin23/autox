@@ -71,11 +71,12 @@ function _startApp() {
     main();
 }
 
-// 页面加载完成后启动
+// 页面加载完成后启动（避免同步+异步重复调用）
 if (typeof ui !== "undefined" && ui.post) {
     ui.post(_startApp);
+} else {
+    _startApp();
 }
-_startApp();
 
 // ===================== AccessibilityService 检测 =====================
 function checkAccessibility() {
