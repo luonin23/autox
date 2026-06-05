@@ -1,7 +1,7 @@
 <claude-mem-context>
 # Memory Context
 
-# [fold7-agent] recent context, 2026-06-05 10:12am GMT+8
+# [fold7-agent] recent context, 2026-06-05 2:26pm GMT+8
 
 Legend: 🎯session 🔴bugfix 🟣feature 🔄refactor ✅change 🔵discovery ⚖️decision 🚨security_alert 🔐security_note
 Format: ID TIME TYPE TITLE
@@ -19,8 +19,8 @@ Access 23k tokens of past work via get_observations([IDs]) or mem-search skill.
 # Fold7 Agent working rules
 
 1. Every code change must finish with the 4-step closeout: review, impact-scope test, emulator cleanup/push, and GitHub commit/push.
-2. UI and runtime changes must be verified on the emulator with real logs, screenshots, and the actual app flow.
-3. Model configuration, chat, execution, retry, and logs belong to the app shell; generated scripts only do phone actions.
+2. UI and runtime changes must be verified on the emulator and available USB device with real logs, screenshots, and the actual app flow.
+3. The current product is a standalone native APK under `fold7-native`; do not rebuild AutoX scripts or the old launcher shell.
 4. Runtime logs are part of the deliverable. If a model or script fails, inspect logs first and fix the root cause before claiming completion.
-5. On the current emulator, AutoX external file menu "Run script" can jump to an empty Log page without executing. Use "Edit script" then the editor toolbar "Run" for reliable emulator verification.
-6. APK packaging comes after the AutoX script app is stable; the APK shell should embed/run `autojs-scripts/main.js` and use `autojs-scripts/assets/app-icon.svg` as the launcher icon source.
+5. Model configuration, confirmation-first chat, action-plan generation, coordinate calibration, execution, retry, and logs belong inside the native app shell.
+6. Generated automation output should be native action JSON, not AutoX JavaScript.

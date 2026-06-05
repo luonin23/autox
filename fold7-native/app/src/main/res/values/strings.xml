@@ -1,0 +1,5 @@
+<resources>
+    <string name="app_name">Fold7 Agent</string>
+    <string name="accessibility_description">Fold7 Agent uses accessibility only to execute user-confirmed action plans.</string>
+</resources>
+
