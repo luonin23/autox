@@ -28,8 +28,72 @@
 var ModelClient = (function () {
     var AppConfig = require("./AppConfig.js");
     var CONFIG = AppConfig.read();
+    var MODEL_LOG_DIR = "/sdcard/fold7-agent/logs/";
+    var MODEL_LOG_FILE = MODEL_LOG_DIR + "model.jsonl";
+
+    try {
+        files.createWithDirs(MODEL_LOG_FILE);
+    } catch (e) {}
 
     var SYSTEM_PROMPT = buildSystemPrompt();
+
+    function writeModelLog(event, data) {
+        try {
+            if (!files.exists(MODEL_LOG_FILE)) {
+                files.write(MODEL_LOG_FILE, "");
+            }
+            var record = {
+                timestamp: new Date().toISOString(),
+                event: event,
+                data: data || {},
+            };
+            files.append(MODEL_LOG_FILE, JSON.stringify(record) + "\n");
+        } catch (e) {}
+    }
+
+    function normalizeFormat(provider, format) {
+        if (provider === "kimi") return format || "anthropic";
+        return "openai";
+    }
+
+    function normalizeBaseUrl(baseUrl) {
+        baseUrl = String(baseUrl || "").trim().replace(/\/$/, "");
+        return baseUrl;
+    }
+
+    function buildApiUrl(provider, format, baseUrl) {
+        var clean = normalizeBaseUrl(baseUrl);
+        var effectiveFormat = normalizeFormat(provider, format);
+
+        if (effectiveFormat === "anthropic") {
+            if (clean.indexOf("/messages") >= 0) return clean;
+            if (provider === "kimi") {
+                if (clean.indexOf("/coding/v1") >= 0) return clean + "/messages";
+                if (clean.indexOf("/coding") >= 0) return clean + "/v1/messages";
+            }
+            return clean + "/messages";
+        }
+
+        if (clean.indexOf("/chat/completions") >= 0) return clean;
+        if (provider === "kimi") {
+            if (clean.indexOf("/coding/v1") >= 0) return clean + "/chat/completions";
+            if (clean.indexOf("/coding") >= 0) return clean + "/v1/chat/completions";
+        }
+        return clean + "/chat/completions";
+    }
+
+    function buildHeaders(provider, cfg, format) {
+        var headers = {
+            "Content-Type": "application/json",
+        };
+        if (provider === "kimi" && normalizeFormat(provider, format) === "anthropic") {
+            headers["x-api-key"] = cfg.apiKey;
+            headers["anthropic-version"] = "2023-06-01";
+        } else if (cfg.apiKey) {
+            headers["Authorization"] = "Bearer " + cfg.apiKey;
+        }
+        return headers;
+    }
 
     function buildSystemPrompt() {
         return (
@@ -209,22 +273,19 @@ var ModelClient = (function () {
         var MAX_RETRY = 2;
         validateConfig();
 
+        var provider = getProvider();
         var cfg = getCfg();
-        var format = CONFIG.format || "openai";
+        var format = normalizeFormat(provider, CONFIG.format || "openai");
         var userContent = screenContext
             ? "用户指令：" + instruction + "\n当前屏幕内容：" + screenContext
             : "用户指令：" + instruction;
 
         var payload, headers, apiUrl;
-        var baseUrl = (cfg.baseUrl || "").replace(/\/$/, "");
+        var baseUrl = cfg.baseUrl || "";
+        apiUrl = buildApiUrl(provider, format, baseUrl);
+        headers = buildHeaders(provider, cfg, format);
 
         if (format === "anthropic") {
-            apiUrl = baseUrl + "/messages";
-            headers = {
-                "Content-Type": "application/json",
-                "x-api-key": cfg.apiKey,
-                "anthropic-version": "2023-06-01",
-            };
             payload = {
                 model: cfg.model,
                 max_tokens: 4096,
@@ -232,13 +293,6 @@ var ModelClient = (function () {
                 messages: [{ role: "user", content: userContent }],
             };
         } else {
-            apiUrl = baseUrl + "/chat/completions";
-            headers = {
-                "Content-Type": "application/json",
-            };
-            if (cfg.apiKey) {
-                headers["Authorization"] = "Bearer " + cfg.apiKey;
-            }
             payload = {
                 model: cfg.model,
                 messages: [
@@ -251,6 +305,14 @@ var ModelClient = (function () {
         }
 
         toastLog("🧠 正在思考...");
+        writeModelLog("request", {
+            provider: provider,
+            format: format,
+            url: apiUrl,
+            model: cfg.model,
+            instruction: instruction,
+            hasScreenContext: !!screenContext,
+        });
         var res = http.postJson(apiUrl, payload, {
             headers: headers,
             timeout: 60000,
@@ -258,6 +320,13 @@ var ModelClient = (function () {
 
         if (res.statusCode !== 200) {
             var errBody = res.body ? res.body.string() : "";
+            writeModelLog("response_error", {
+                provider: provider,
+                format: format,
+                url: apiUrl,
+                statusCode: res.statusCode,
+                body: errBody.substring(0, 500),
+            });
             if (retry < MAX_RETRY) {
                 log("⚠️ 模型请求失败 (" + res.statusCode + ")，" + (retry + 1) + "/" + (MAX_RETRY + 1) + " 次重试...");
                 sleep(1000 * (retry + 1));
@@ -267,6 +336,12 @@ var ModelClient = (function () {
         }
 
         var json = res.body.json();
+        writeModelLog("response_ok", {
+            provider: provider,
+            format: format,
+            url: apiUrl,
+            statusCode: res.statusCode,
+        });
         var rawText = "";
 
         if (format === "anthropic" && json.content && json.content[0]) {
@@ -291,18 +366,15 @@ var ModelClient = (function () {
         var MAX_RETRY = 2;
         validateConfig();
 
+        var provider = getProvider();
         var cfg = getCfg();
-        var format = CONFIG.format || "openai";
-        var baseUrl = (cfg.baseUrl || "").replace(/\/$/, "");
+        var format = normalizeFormat(provider, CONFIG.format || "openai");
+        var baseUrl = cfg.baseUrl || "";
         var payload, headers, apiUrl;
+        apiUrl = buildApiUrl(provider, format, baseUrl);
+        headers = buildHeaders(provider, cfg, format);
 
         if (format === "anthropic") {
-            apiUrl = baseUrl + "/messages";
-            headers = {
-                "Content-Type": "application/json",
-                "x-api-key": cfg.apiKey,
-                "anthropic-version": "2023-06-01",
-            };
             // Anthropic 格式：system 放在顶层，messages 不含 system
             var systemMsg = SYSTEM_PROMPT;
             var userMessages = messages.filter(function (m) {
@@ -315,13 +387,6 @@ var ModelClient = (function () {
                 messages: userMessages,
             };
         } else {
-            apiUrl = baseUrl + "/chat/completions";
-            headers = {
-                "Content-Type": "application/json",
-            };
-            if (cfg.apiKey) {
-                headers["Authorization"] = "Bearer " + cfg.apiKey;
-            }
             // OpenAI 格式：system 作为第一条 message
             var fullMessages = [{ role: "system", content: SYSTEM_PROMPT }].concat(
                 messages.filter(function (m) {
@@ -337,6 +402,13 @@ var ModelClient = (function () {
         }
 
         toastLog("🧠 正在思考...");
+        writeModelLog("request_history", {
+            provider: provider,
+            format: format,
+            url: apiUrl,
+            model: cfg.model,
+            messageCount: messages.length,
+        });
         var res = http.postJson(apiUrl, payload, {
             headers: headers,
             timeout: 60000,
@@ -344,6 +416,13 @@ var ModelClient = (function () {
 
         if (res.statusCode !== 200) {
             var errBody = res.body ? res.body.string() : "";
+            writeModelLog("response_error", {
+                provider: provider,
+                format: format,
+                url: apiUrl,
+                statusCode: res.statusCode,
+                body: errBody.substring(0, 500),
+            });
             if (retry < MAX_RETRY) {
                 log("⚠️ 模型请求失败 (" + res.statusCode + ")，" + (retry + 1) + "/" + (MAX_RETRY + 1) + " 次重试...");
                 sleep(1000 * (retry + 1));
@@ -353,6 +432,12 @@ var ModelClient = (function () {
         }
 
         var json = res.body.json();
+        writeModelLog("response_ok", {
+            provider: provider,
+            format: format,
+            url: apiUrl,
+            statusCode: res.statusCode,
+        });
         var rawText = "";
 
         if (format === "anthropic" && json.content && json.content[0]) {
@@ -382,6 +467,53 @@ var ModelClient = (function () {
         getConfig: function () {
             CONFIG = AppConfig.read();
             return CONFIG;
+        },
+        buildApiUrl: buildApiUrl,
+        testConnection: function (providerName, formatName, cfg) {
+            providerName = providerName || getProvider();
+            cfg = cfg || getCfg();
+            formatName = normalizeFormat(providerName, formatName || CONFIG.format || "openai");
+            var apiUrl = buildApiUrl(providerName, formatName, cfg.baseUrl || "");
+            var headers = buildHeaders(providerName, cfg, formatName);
+            var payload;
+            if (formatName === "anthropic") {
+                payload = {
+                    model: cfg.model,
+                    max_tokens: 1,
+                    messages: [{ role: "user", content: "ping" }],
+                };
+            } else {
+                payload = {
+                    model: cfg.model,
+                    messages: [{ role: "user", content: "ping" }],
+                    max_tokens: 1,
+                };
+            }
+            writeModelLog("test_connection", {
+                provider: providerName,
+                format: formatName,
+                url: apiUrl,
+                model: cfg.model,
+            });
+            var res = http.postJson(apiUrl, payload, {
+                headers: headers,
+                timeout: 15000,
+            });
+            var bodyText = "";
+            try {
+                bodyText = res.body ? res.body.string() : "";
+            } catch (e) {}
+            writeModelLog("test_connection_result", {
+                provider: providerName,
+                format: formatName,
+                url: apiUrl,
+                statusCode: res.statusCode,
+                body: bodyText.substring(0, 300),
+            });
+            return {
+                statusCode: res.statusCode,
+                bodyText: bodyText,
+            };
         },
         setApiKey: function (key) {
             CONFIG = AppConfig.read();

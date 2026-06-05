@@ -105,34 +105,35 @@ var ScriptExecutor = (function () {
             }
         });
 
-        // 监听该引擎的 console 输出
+        // 监听该引擎的 console 输出；AutoX v7 可能没有 observeConsole，
+        // 这种情况下依赖注入脚本写入的 exec_*.jsonl 文件日志。
         var consoleListener = null;
-        try {
-            // AutoX.js 支持 events.on("console") 监听其他脚本的 console
-            events.observeConsole();
-            consoleListener = function (msg) {
-                if (stopped || completed) return;
-                // msg 是 ConsoleMessage 对象，有 getMessage() 等方法
-                var line = "";
-                try {
-                    if (msg && msg.getMessage) {
-                        line = msg.getMessage();
-                    } else if (typeof msg === "string") {
-                        line = msg;
-                    } else {
+        if (events && events.observeConsole) {
+            try {
+                // AutoX.js 支持 events.on("console") 监听其他脚本的 console
+                events.observeConsole();
+                consoleListener = function (msg) {
+                    if (stopped || completed) return;
+                    // msg 是 ConsoleMessage 对象，有 getMessage() 等方法
+                    var line = "";
+                    try {
+                        if (msg && msg.getMessage) {
+                            line = msg.getMessage();
+                        } else if (typeof msg === "string") {
+                            line = msg;
+                        } else {
+                            line = String(msg);
+                        }
+                    } catch (e) {
                         line = String(msg);
                     }
-                } catch (e) {
-                    line = String(msg);
-                }
-                if (line) {
-                    logs.push({ time: Date.now(), level: "log", message: line });
-                    onLog(line);
-                }
-            };
-            events.on("console", consoleListener);
-        } catch (e) {
-            log("⚠️ console 监听设置失败:", e.message);
+                    if (line) {
+                        logs.push({ time: Date.now(), level: "log", message: line });
+                        onLog(line);
+                    }
+                };
+                events.on("console", consoleListener);
+            } catch (e) {}
         }
 
         // 超时检测线程

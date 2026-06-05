@@ -163,6 +163,11 @@ ui.layout(
                             <text text="【淘宝】" textSize="14sp" textColor="#333333" textStyle="bold" marginBottom="4"/>
                             <text text="打开 → 搜索框 → 输入关键词 → 点击搜索" textSize="12sp" textColor="#555555" marginBottom="16"/>
 
+                            <text text="插件 / 模块说明" textSize="16sp" textColor="#333333" textStyle="bold" marginBottom="8"/>
+                            <text text="这里不是让你安装外部插件。Docs 里列出的 ModelClient、ChatEngine、ScriptExecutor、UIAutomator 是 APP 内部模块。" textSize="12sp" textColor="#555555" marginBottom="4"/>
+                            <text text="它们的作用是：模型配置和请求、对话生成、运行脚本、监控日志、出错后修复重试。" textSize="12sp" textColor="#555555" marginBottom="4"/>
+                            <text text="对你的实际用处：你只需要在 Settings 配好模型，然后在 Chat 说需求，APP 会把需求变成脚本并执行。" textSize="12sp" textColor="#555555" marginBottom="16"/>
+
                             <text text="框架 API" textSize="16sp" textColor="#333333" textStyle="bold" marginBottom="8"/>
                             <text text="UIAutomator.executeCommand({action, target, text, delay_ms, reason})" textSize="12sp" textColor="#555555" marginBottom="4"/>
                             <text text="UIAutomator.safeClick(target, timeout)" textSize="12sp" textColor="#555555" marginBottom="4"/>
@@ -747,81 +752,38 @@ ui.btnTest.click(function () {
     ui.settingStatus.setText("🔄 正在测试连接...");
     ui.settingStatus.setTextColor(colors.parseColor("#666666"));
 
-    var format = ui.settingFormat.getSelectedItemPosition() === 0 ? "openai" : "anthropic";
-    var isAnthropic = format === "anthropic";
-
     threads.start(function () {
         try {
-            var res;
-            if (activeProvider === "kimi") {
-                var key = String(ui.kimiApiKey.getText() || "").trim();
-                var baseUrl = String(ui.kimiBaseUrl.getText() || "https://api.kimi.com/coding").trim().replace(/\/$/, "");
-                var model = String(ui.kimiModel.getText() || "kimi-for-coding").trim();
-                if (key.length < 10) {
-                    ui.run(function () {
-                        ui.settingStatus.setText("❌ Kimi API Key 不能为空");
-                        ui.settingStatus.setTextColor(colors.parseColor("#e74c3c"));
-                    });
-                    return;
-                }
-                if (isAnthropic) {
-                    res = http.postJson(baseUrl + "/messages", {
-                        model: model,
-                        max_tokens: 1,
-                        messages: [{ role: "user", content: "hi" }],
-                    }, {
-                        headers: {
-                            "x-api-key": key,
-                            "anthropic-version": "2023-06-01",
-                            "Content-Type": "application/json"
-                        },
-                        timeout: 15000,
-                    });
-                } else {
-                    res = http.postJson(baseUrl + "/chat/completions", {
-                        model: model,
-                        messages: [{ role: "user", content: "hi" }],
-                        max_tokens: 1,
-                    }, {
-                        headers: {
-                            "Authorization": "Bearer " + key,
-                            "Content-Type": "application/json"
-                        },
-                        timeout: 15000,
-                    });
-                }
-            } else if (activeProvider === "deepseek") {
-                var key = String(ui.deepseekApiKey.getText() || "").trim();
-                var baseUrl = String(ui.deepseekBaseUrl.getText() || "https://api.deepseek.com/v1").trim().replace(/\/$/, "");
-                var model = String(ui.deepseekModel.getText() || "deepseek-chat").trim();
-                if (key.length < 10) {
-                    ui.run(function () {
-                        ui.settingStatus.setText("❌ DeepSeek API Key 不能为空");
-                        ui.settingStatus.setTextColor(colors.parseColor("#e74c3c"));
-                    });
-                    return;
-                }
-                res = http.postJson(baseUrl + "/chat/completions", {
-                    model: model,
-                    messages: [{ role: "user", content: "hi" }],
-                    max_tokens: 1,
-                }, {
-                    headers: {
-                        "Authorization": "Bearer " + key,
-                        "Content-Type": "application/json"
-                    },
-                    timeout: 15000,
+            var cfg = {
+                provider: activeProvider,
+                format: ui.settingFormat.getSelectedItemPosition() === 0 ? "openai" : "anthropic",
+                kimi: {
+                    baseUrl: String(ui.kimiBaseUrl.getText() || "https://api.kimi.com/coding").trim(),
+                    apiKey: String(ui.kimiApiKey.getText() || "").trim(),
+                    model: String(ui.kimiModel.getText() || "kimi-for-coding").trim(),
+                },
+                deepseek: {
+                    baseUrl: String(ui.deepseekBaseUrl.getText() || "https://api.deepseek.com/v1").trim(),
+                    apiKey: String(ui.deepseekApiKey.getText() || "").trim(),
+                    model: String(ui.deepseekModel.getText() || "deepseek-chat").trim(),
+                },
+                local: {
+                    baseUrl: String(ui.localBaseUrl.getText() || "http://127.0.0.1:8080/v1").trim(),
+                    apiKey: "",
+                    model: String(ui.localModel.getText() || "local").trim(),
+                },
+                maxSteps: parseInt(String(ui.maxSteps.getText() || "15")) || 15,
+            };
+            var providerCfg = cfg[cfg.provider] || cfg.kimi;
+            if (cfg.provider !== "local" && (!providerCfg.apiKey || providerCfg.apiKey.length < 10)) {
+                ui.run(function () {
+                    ui.settingStatus.setText("❌ API Key 不能为空");
+                    ui.settingStatus.setTextColor(colors.parseColor("#e74c3c"));
                 });
-            } else {
-                var baseUrl = String(ui.localBaseUrl.getText() || "http://127.0.0.1:8080/v1").trim().replace(/\/$/, "");
-                var model = String(ui.localModel.getText() || "local").trim();
-                res = http.postJson(baseUrl + "/chat/completions", {
-                    model: model,
-                    messages: [{ role: "user", content: "hi" }],
-                    max_tokens: 1,
-                }, { timeout: 5000 });
+                return;
             }
 
+            var res = ModelClient.testConnection(cfg.provider, cfg.format, providerCfg);
             var statusCode = res ? res.statusCode : 0;
             ui.run(function () {
                 if (statusCode >= 200 && statusCode < 300) {
@@ -833,6 +795,7 @@ ui.btnTest.click(function () {
                 }
             });
         } catch (e) {
+            log("模型测试失败: " + e.message);
             ui.run(function () {
                 ui.settingStatus.setText("❌ 连接失败: " + e.message);
                 ui.settingStatus.setTextColor(colors.parseColor("#e74c3c"));
@@ -890,8 +853,6 @@ ui.btnSave.click(function () {
             wechatMin: 3000,
         },
     };
-
-    var configContent = 'module.exports = ' + JSON.stringify(configObj, null, 4) + ';\n';
 
     try {
         AppConfig.write(configObj);
