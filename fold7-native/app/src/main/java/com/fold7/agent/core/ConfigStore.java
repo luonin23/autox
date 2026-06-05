@@ -143,6 +143,10 @@ public class ConfigStore {
         prefs.edit().putInt("actionTimeoutMs", Math.max(500, Math.min(30000, timeoutMs))).apply();
     }
 
+    public void saveMaxSteps(int maxSteps) {
+        prefs.edit().putInt("maxSteps", Math.max(4, Math.min(80, maxSteps))).apply();
+    }
+
     public boolean importAutoXConfig() {
         String[] paths = new String[] {
             "/sdcard/AutoX/fold7-agent/autojs-scripts/config.js",

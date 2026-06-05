@@ -6,17 +6,23 @@ import org.json.JSONObject;
 public class RuntimeAgent {
     private final ModelClient model;
     private final ActionExecutor executor;
+    private final ConfigStore config;
 
     public RuntimeAgent(ModelClient model, ActionExecutor executor) {
+        this(model, executor, null);
+    }
+
+    public RuntimeAgent(ModelClient model, ActionExecutor executor, ConfigStore config) {
         this.model = model;
         this.executor = executor;
+        this.config = config;
     }
 
     public String execute(String request, JSONObject plan) throws Exception {
         StringBuilder transcript = new StringBuilder();
         String last = "none";
         int failures = 0;
-        int max = 12;
+        int max = config == null ? 24 : config.maxSteps();
         for (int i = 0; i < max; i++) {
             String observation = observe();
             String image = screenshot();

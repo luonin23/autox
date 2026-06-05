@@ -477,6 +477,7 @@ public class MainActivity extends Activity implements LogStore.Listener {
         final EditText apiKey = input(editing == null ? "" : editing.apiKey, "API Key");
         apiKey.setInputType(InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_VARIATION_PASSWORD);
         final EditText model = input(editing == null ? "" : editing.model, "model");
+        final EditText maxSteps = input(String.valueOf(config.maxSteps()), "max AI steps");
         final EditText timeout = input(String.valueOf(config.actionTimeoutMs()), "action timeout ms");
         page.addView(labeled("Name", name));
         page.addView(labeled("Provider", provider));
@@ -484,6 +485,7 @@ public class MainActivity extends Activity implements LogStore.Listener {
         page.addView(labeled("Base URL", baseUrl));
         page.addView(labeled("API Key", apiKey));
         page.addView(labeled("Model", model));
+        page.addView(labeled("Max AI Steps", maxSteps));
         page.addView(labeled("Action Timeout", timeout));
 
         LinearLayout buttons = new LinearLayout(this);
@@ -493,6 +495,7 @@ public class MainActivity extends Activity implements LogStore.Listener {
             public void onClick(View v) {
                 config.saveModel(editing == null ? "" : editing.id, name.getText().toString(), provider.getText().toString(), format.getText().toString(),
                     baseUrl.getText().toString(), apiKey.getText().toString(), model.getText().toString());
+                config.saveMaxSteps(Math.round(num(maxSteps, config.maxSteps())));
                 config.saveActionTimeoutMs(Math.round(num(timeout, config.actionTimeoutMs())));
                 rebuildChat();
                 LogStore.add("CFG", "Model saved and activated: " + config.activeModelName());

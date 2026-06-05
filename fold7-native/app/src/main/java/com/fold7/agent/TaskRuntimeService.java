@@ -75,8 +75,9 @@ public class TaskRuntimeService extends Service {
         TaskStore store = new TaskStore(this);
         TaskStore.TaskRecord task = store.find(taskId);
         if (task == null) throw new Exception("task not found: " + taskId);
+        ConfigStore config = new ConfigStore(this);
         LogStore.add(scheduled ? "SCH" : "RUN", "runtime service started: " + task.title);
-        String result = new RuntimeAgent(new ModelClient(new ConfigStore(this)), new ActionExecutor(this))
+        String result = new RuntimeAgent(new ModelClient(config), new ActionExecutor(this), config)
             .execute(task.request, new JSONObject(task.planJson));
         if (scheduled) {
             store.incrementRunCount(task.id);
