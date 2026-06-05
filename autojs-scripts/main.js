@@ -12,20 +12,21 @@
  */
 "ui";
 
+// 调试：确认脚本开始执行
+toast("Fold7 Agent 启动中...");
+
 (function () {
 
 // ===================== 模块导入 =====================
 var ChatEngine = require("./agent/ChatEngine.js");
+var AppConfig = require("./core/AppConfig.js");
+var ModelClient = require("./core/ModelClient.js");
 var Logger = require("./core/Logger.js");
 var ScreenshotCleaner = require("./core/ScreenshotCleaner.js");
 
 // 加载配置
-var CONFIG = null;
-try {
-    CONFIG = require("./config.js");
-} catch (e) {
-    CONFIG = null;
-}
+var CONFIG = AppConfig.read();
+var HAS_MODEL_CONFIG = AppConfig.isConfigured(CONFIG);
 
 // ===================== 常量 =====================
 var SAVE_DIR = "/sdcard/AutoX/fold7-agent/scripts/";
@@ -55,7 +56,7 @@ ui.layout(
                             <text text="通过 AI 对话生成 Android 自动化脚本" textSize="14sp" textColor="#666666" marginBottom="20"/>
 
                             <!-- 快速入口卡片 -->
-                            <vertical bg="#ffffff" padding="16" marginBottom="12" radius="8">
+                            <vertical bg="#ffffff" padding="16" marginBottom="12">
                                 <text text="🚀 快速开始" textSize="16sp" textColor="#333333" textStyle="bold" marginBottom="12"/>
                                 <text text="点击底部 💬 Chat 标签，输入自然语言指令：" textSize="13sp" textColor="#666666" marginBottom="8"/>
                                 <text text="  · 给张三发微信说晚上吃饭" textSize="13sp" textColor="#1976d2" marginBottom="4"/>
@@ -65,7 +66,7 @@ ui.layout(
                             </vertical>
 
                             <!-- 当前配置状态 -->
-                            <vertical bg="#ffffff" padding="16" marginBottom="12" radius="8">
+                            <vertical bg="#ffffff" padding="16" marginBottom="12">
                                 <text text="⚙️ 当前配置" textSize="16sp" textColor="#333333" textStyle="bold" marginBottom="12"/>
                                 <text id="homeCfgProvider" text="提供商: 未配置" textSize="13sp" textColor="#666666" marginBottom="4"/>
                                 <text id="homeCfgModel" text="模型: --" textSize="13sp" textColor="#666666" marginBottom="4"/>
@@ -75,7 +76,7 @@ ui.layout(
                             </vertical>
 
                             <!-- 今日统计 -->
-                            <vertical bg="#ffffff" padding="16" marginBottom="12" radius="8">
+                            <vertical bg="#ffffff" padding="16" marginBottom="12">
                                 <text text="📊 今日统计" textSize="16sp" textColor="#333333" textStyle="bold" marginBottom="12"/>
                                 <horizontal>
                                     <text id="homeStatSuccess" text="✅ 0" textSize="18sp" textColor="#27ae60" layout_weight="1"/>
@@ -233,7 +234,7 @@ ui.layout(
                             <text id="settingStatus" text="" textSize="12sp" textColor="#e74c3c" gravity="center" marginTop="12"/>
 
                             <!-- 当前配置状态 -->
-                            <vertical bg="#f0f0f0" padding="12" marginTop="16" radius="4">
+                            <vertical bg="#f0f0f0" padding="12" marginTop="16">
                                 <text text="当前配置状态" textSize="14sp" textColor="#333333" textStyle="bold" marginBottom="8"/>
                                 <text id="statusProvider" text="提供商: --" textSize="13sp" textColor="#666666"/>
                                 <text id="statusModel" text="模型: --" textSize="13sp" textColor="#666666"/>
@@ -285,6 +286,30 @@ ui.layout(
 
 ui.statusBarColor("#1976d2");
 
+try {
+    ScreenshotCleaner.clean();
+} catch (e) {
+    log("截图清理失败: " + e.message);
+}
+
+function makeBg(color, radius) {
+    var bg = new android.graphics.drawable.GradientDrawable();
+    bg.setColor(colors.parseColor(color));
+    bg.setCornerRadius(radius || 0);
+    return bg;
+}
+
+function makeBubbleBg(color, radii) {
+    var bg = new android.graphics.drawable.GradientDrawable();
+    bg.setColor(colors.parseColor(color));
+    bg.setCornerRadii(radii);
+    return bg;
+}
+
+function setTextBold(textView, active) {
+    textView.setTypeface(null, active ? android.graphics.Typeface.BOLD : android.graphics.Typeface.NORMAL);
+}
+
 // ===================== 导航切换 =====================
 var currentPage = "home";
 
@@ -331,11 +356,7 @@ function setNavStyle(navId, active) {
     nav.setBackgroundColor(colors.parseColor(active ? NAV_ACTIVE_BG : NAV_INACTIVE_BG));
     var textView = nav.getChildAt(0).getChildAt(1);
     textView.setTextColor(colors.parseColor(active ? NAV_ACTIVE_COLOR : NAV_INACTIVE_COLOR));
-    if (active) {
-        textView.setTextStyle(1); // bold
-    } else {
-        textView.setTextStyle(0); // normal
-    }
+    setTextBold(textView, active);
 }
 
 ui.navHome.click(function () { switchPage("home"); });
@@ -347,7 +368,7 @@ ui.navSettings.click(function () { switchPage("settings"); });
 // ===================== 🏠 Home 页逻辑 =====================
 function refreshHomePage() {
     var cfg = loadConfigSafe();
-    var providerName = cfg.provider === "kimi" ? "Kimi" : (cfg.provider === "deepseek" ? "DeepSeek" : "本地");
+    var providerName = AppConfig.providerLabel(cfg.provider);
     var providerCfg = cfg[cfg.provider] || {};
     var hasKey = providerCfg.apiKey && providerCfg.apiKey.length > 5;
 
@@ -430,18 +451,10 @@ function addChatMessage(text, role) {
         bubble.setTextSize(14);
         if (role === "user") {
             bubble.setTextColor(colors.parseColor("#ffffff"));
-            bubble.setBackgroundDrawable(
-                new android.graphics.drawable.GradientDrawable()
-                    .setCornerRadii([24, 24, 4, 4, 24, 24, 24, 24])
-                    .setColor(colors.parseColor("#1976d2"))
-            );
+            bubble.setBackgroundDrawable(makeBubbleBg("#1976d2", [24, 24, 4, 4, 24, 24, 24, 24]));
         } else {
             bubble.setTextColor(colors.parseColor("#333333"));
-            bubble.setBackgroundDrawable(
-                new android.graphics.drawable.GradientDrawable()
-                    .setCornerRadii([4, 4, 24, 24, 24, 24, 24, 24])
-                    .setColor(colors.parseColor("#e8e8e8"))
-            );
+            bubble.setBackgroundDrawable(makeBubbleBg("#e8e8e8", [4, 4, 24, 24, 24, 24, 24, 24]));
         }
         bubble.setPadding(24, 16, 24, 16);
         bubble.setMaxWidth(device.width * 0.75);
@@ -480,11 +493,7 @@ function addScriptCard(code, desc) {
         preview.setText(previewText);
         preview.setTextSize(11);
         preview.setTextColor(colors.parseColor("#555555"));
-        preview.setBackgroundDrawable(
-            new android.graphics.drawable.GradientDrawable()
-                .setCornerRadius(8)
-                .setColor(colors.parseColor("#f0f0f0"))
-        );
+        preview.setBackgroundDrawable(makeBg("#f0f0f0", 8));
         preview.setPadding(16, 12, 16, 12);
         preview.setMaxWidth(device.width * 0.85);
         previewRow.addView(preview);
@@ -500,22 +509,14 @@ function addScriptCard(code, desc) {
         btnRun.setText("▶ 执行");
         btnRun.setTextSize(13);
         btnRun.setTextColor(colors.parseColor("#ffffff"));
-        btnRun.setBackgroundDrawable(
-            new android.graphics.drawable.GradientDrawable()
-                .setCornerRadius(8)
-                .setColor(colors.parseColor("#4caf50"))
-        );
+        btnRun.setBackgroundDrawable(makeBg("#4caf50", 8));
         btnRun.setPadding(24, 12, 24, 12);
 
         var btnSave = new android.widget.Button(context);
         btnSave.setText("💾 保存");
         btnSave.setTextSize(13);
         btnSave.setTextColor(colors.parseColor("#ffffff"));
-        btnSave.setBackgroundDrawable(
-            new android.graphics.drawable.GradientDrawable()
-                .setCornerRadius(8)
-                .setColor(colors.parseColor("#1976d2"))
-        );
+        btnSave.setBackgroundDrawable(makeBg("#1976d2", 8));
         btnSave.setPadding(24, 12, 24, 12);
         var lpSave = new android.widget.LinearLayout.LayoutParams(
             android.widget.LinearLayout.LayoutParams.WRAP_CONTENT,
@@ -567,7 +568,7 @@ function refreshManagePage() {
             if (files.exists(SAVE_DIR)) {
                 var entries = files.listDir(SAVE_DIR);
                 entries.forEach(function (name) {
-                    if (name.endsWith(".js")) {
+                    if (name.length >= 3 && name.substring(name.length - 3) === ".js") {
                         var path = SAVE_DIR + name;
                         var size = files.isFile(path) ? files.read(path).length : 0;
                         list.push({ name: name, path: path, size: size });
@@ -594,11 +595,7 @@ function refreshManagePage() {
                     var card = new android.widget.LinearLayout(context);
                     card.setOrientation(android.widget.LinearLayout.VERTICAL);
                     card.setPadding(24, 16, 24, 16);
-                    card.setBackgroundDrawable(
-                        new android.graphics.drawable.GradientDrawable()
-                            .setCornerRadius(12)
-                            .setColor(colors.parseColor("#ffffff"))
-                    );
+                    card.setBackgroundDrawable(makeBg("#ffffff", 12));
                     var lp = new android.widget.LinearLayout.LayoutParams(
                         android.widget.LinearLayout.LayoutParams.MATCH_PARENT,
                         android.widget.LinearLayout.LayoutParams.WRAP_CONTENT
@@ -610,7 +607,7 @@ function refreshManagePage() {
                     nameText.setText(item.name);
                     nameText.setTextSize(14);
                     nameText.setTextColor(colors.parseColor("#333333"));
-                    nameText.setTextStyle(1);
+                    setTextBold(nameText, true);
                     card.addView(nameText);
 
                     var infoText = new android.widget.TextView(context);
@@ -688,18 +685,7 @@ ui.manageBtnRefresh.click(function () {
 var activeProvider = "kimi";
 
 function loadConfigSafe() {
-    try {
-        return require("./config.js");
-    } catch (e) {
-        return {
-            provider: "kimi",
-            format: "anthropic",
-            kimi: { baseUrl: "https://api.kimi.com/coding", apiKey: "", model: "kimi-for-coding" },
-            deepseek: { baseUrl: "https://api.deepseek.com/v1", apiKey: "", model: "deepseek-chat" },
-            local: { baseUrl: "http://127.0.0.1:8080/v1", apiKey: "", model: "local" },
-            maxSteps: 15,
-        };
-    }
+    return AppConfig.read();
 }
 
 function refreshSettingsPage() {
@@ -747,7 +733,7 @@ ui.tabLocal.click(function () { switchCfgTab("local"); });
 
 function updateSettingStatus() {
     var cfg = loadConfigSafe();
-    var providerName = cfg.provider === "kimi" ? "Kimi" : (cfg.provider === "deepseek" ? "DeepSeek" : "本地");
+    var providerName = AppConfig.providerLabel(cfg.provider);
     var providerCfg = cfg[cfg.provider] || {};
     var hasKey = providerCfg.apiKey && providerCfg.apiKey.length > 5;
     ui.statusProvider.setText("提供商: " + providerName);
@@ -908,17 +894,14 @@ ui.btnSave.click(function () {
     var configContent = 'module.exports = ' + JSON.stringify(configObj, null, 4) + ';\n';
 
     try {
-        var configPath = files.path("/sdcard/AutoX/fold7-agent/autojs-scripts/config.js");
-        files.createWithDirs(configPath);
-        files.write(configPath, configContent);
+        AppConfig.write(configObj);
+        ModelClient.reloadConfig();
+        CONFIG = AppConfig.read();
+        HAS_MODEL_CONFIG = AppConfig.isConfigured(CONFIG);
         toastLog("✅ 配置已保存");
         ui.settingStatus.setText("✅ 配置已保存");
         ui.settingStatus.setTextColor(colors.parseColor("#4caf50"));
         updateSettingStatus();
-        // 刷新 CONFIG 变量
-        try {
-            CONFIG = require("./config.js");
-        } catch (e) {}
     } catch (e) {
         ui.settingStatus.setText("❌ 保存失败: " + e.message);
         ui.settingStatus.setTextColor(colors.parseColor("#e74c3c"));
@@ -926,7 +909,7 @@ ui.btnSave.click(function () {
 });
 
 // ===================== 启动 =====================
-if (!CONFIG) {
+if (!HAS_MODEL_CONFIG) {
     // 首次运行，跳转到 Settings 页面
     switchPage("settings");
     toastLog("首次运行，请先配置模型");

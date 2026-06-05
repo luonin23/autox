@@ -82,9 +82,11 @@ var ChatEngine = (function () {
             if (phase === "generate") {
                 userContent = "用户指令：" + instruction + "\n\n请生成 AutoX.js 脚本。";
             } else if (phase === "fix") {
-                var logText = logs.map(function (l) {
-                    return l.message;
-                }).join("\n");
+                var logLines = [];
+                for (var li = 0; li < logs.length; li++) {
+                    logLines.push(logs[li].message || "");
+                }
+                var logText = logLines.join("\n");
                 userContent =
                     "之前生成的脚本执行出错了，请修复。\n\n" +
                     "原始指令：" + instruction + "\n\n" +
@@ -116,7 +118,7 @@ var ChatEngine = (function () {
                 text = codeBlockMatch[1].trim();
             }
             // 尝试找最外层的大括号
-            if (!text.startsWith("{")) {
+            if (text.charAt(0) !== "{") {
                 var jsonMatch = text.match(/\{[\s\S]*\}/);
                 if (jsonMatch) {
                     text = jsonMatch[0];
@@ -270,15 +272,17 @@ var ChatEngine = (function () {
             },
 
             /**
-             * 手动执行一段脚本（用户点击"执行"按钮时使用）
+             * Execute an existing script through the same monitored runtime.
+             * This is used by script cards and the Manage tab; model generation
+             * remains in the app framework, not inside generated scripts.
              */
-            execute: function (scriptCode, description) {
+            execute: function (scriptCode, instruction) {
                 if (isRunning) {
-                    onMessage("⚠️ 当前有任务正在执行");
+                    onMessage("⚠️ 当前有任务正在执行，请等待完成或停止当前任务");
                     return;
                 }
-                onScript(scriptCode, description || "用户手动执行");
-                runWithAutoFix(scriptCode, description || "手动执行", 0);
+                onMessage("▶️ 正在执行脚本: " + (instruction || "手动执行"));
+                runWithAutoFix(scriptCode, instruction || "手动执行", 0);
             },
 
             /**

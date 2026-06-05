@@ -1,7 +1,7 @@
 /**
  * UI 自动化封装 — 基于 AutoX.js AccessibilityService
  */
-const UIAutomator = (function () {
+var UIAutomator = (function () {
     /**
      * 随机延迟（防检测）
      */
@@ -24,28 +24,24 @@ const UIAutomator = (function () {
         duration = duration || 300;
         controlOffset = controlOffset || random(-100, 100);
 
-        const cx = (x1 + x2) / 2 + controlOffset;
-        const cy = (y1 + y2) / 2 + random(-50, 50);
+        var cx = (x1 + x2) / 2 + controlOffset;
+        var cy = (y1 + y2) / 2 + random(-50, 50);
 
-        const steps = Math.max(Math.floor(duration / 16), 10);
-        const path = [];
+        var steps = Math.max(Math.floor(duration / 16), 10);
+        var path = [];
 
-        for (let i = 0; i <= steps; i++) {
-            const t = i / steps;
-            const invT = 1 - t;
+        for (var i = 0; i <= steps; i++) {
+            var t = i / steps;
+            var invT = 1 - t;
             // 二次贝塞尔曲线
-            const bx = invT * invT * x1 + 2 * invT * t * cx + t * t * x2;
-            const by = invT * invT * y1 + 2 * invT * t * cy + t * t * y2;
+            var bx = invT * invT * x1 + 2 * invT * t * cx + t * t * x2;
+            var by = invT * invT * y1 + 2 * invT * t * cy + t * t * y2;
             path.push([bx, by]);
         }
 
-        // 使用 gesture 执行路径（比 swipe 更自然）
-        const gestureArgs = [duration].concat(path.flat());
-        // AutoX.js 的 gesture 需要展开参数
-        // 由于参数数量不确定，这里拆成每段小滑动来模拟
-        for (let i = 0; i < path.length - 1; i++) {
-            const stepDur = Math.floor(duration / steps);
-            swipe(path[i][0], path[i][1], path[i + 1][0], path[i + 1][1], stepDur);
+        for (var j = 0; j < path.length - 1; j++) {
+            var stepDur = Math.floor(duration / steps);
+            swipe(path[j][0], path[j][1], path[j + 1][0], path[j + 1][1], stepDur);
         }
     }
 
@@ -56,7 +52,7 @@ const UIAutomator = (function () {
      */
     function safeClick(target, timeout) {
         timeout = timeout || 5000;
-        let node = null;
+        var node = null;
 
         if (typeof target === "string") {
             // 先按 text 查找，再按 desc 查找，再按包含文字查找
@@ -70,7 +66,7 @@ const UIAutomator = (function () {
 
         if (node && node.clickable()) {
             humanDelay(200, 600);
-            const ok = node.click();
+            var ok = node.click();
             humanDelay(300, 800);
             return ok;
         }
@@ -88,7 +84,7 @@ const UIAutomator = (function () {
     function safeLongClick(target, duration, timeout) {
         duration = duration || 1000;
         timeout = timeout || 5000;
-        let node = null;
+        var node = null;
 
         if (typeof target === "string") {
             node = text(target).findOne(timeout);
@@ -105,9 +101,9 @@ const UIAutomator = (function () {
 
         // 回退：用坐标长按
         if (node) {
-            const bounds = node.bounds();
-            const cx = bounds.centerX();
-            const cy = bounds.centerY();
+            var bounds = node.bounds();
+            var cx = bounds.centerX();
+            var cy = bounds.centerY();
             press(cx, cy, duration);
             humanDelay(300, 600);
             return true;
@@ -123,7 +119,7 @@ const UIAutomator = (function () {
      * @param {string} content 要输入的内容
      */
     function safeInput(target, content) {
-        let node = text(target).findOne(5000);
+        var node = text(target).findOne(5000);
         if (!node) node = desc(target).findOne(3000);
         if (!node) node = className("EditText").findOne(3000);
 
@@ -151,37 +147,37 @@ const UIAutomator = (function () {
         maxChars = maxChars || 2000;
         includeBounds = includeBounds || false;
 
-        const nodes = classNameContains("").find();
-        let texts = [];
+        var nodes = classNameContains("").find();
+        var texts = [];
 
         nodes.forEach(function (n) {
-            const t = n.text() || n.desc() || "";
-            const trimmed = t.trim();
+            var t = n.text() || n.desc() || "";
+            var trimmed = t.trim();
             // 过滤掉无意义内容
             if (!trimmed || trimmed.length > 80) return;
             if (trimmed.match(/^[\d\s\W]+$/)) return; // 纯数字符号
             if (trimmed.indexOf("android.widget.") === 0) return;
 
-            let entry = trimmed;
+            var entry = trimmed;
             if (includeBounds) {
-                const b = n.bounds();
-                entry += ` [${b.centerX()},${b.centerY()}]`;
+                var b = n.bounds();
+                entry += " [" + b.centerX() + "," + b.centerY() + "]";
             }
             texts.push(entry);
         });
 
         // 去重
-        const unique = [];
-        const seen = {};
+        var unique = [];
+        var seen = {};
         texts.forEach(function (item) {
-            const key = item.split(" [")[0]; // 去重时不看坐标
+            var key = item.split(" [")[0]; // 去重时不看坐标
             if (!seen[key]) {
                 seen[key] = true;
                 unique.push(item);
             }
         });
 
-        let result = unique.join(" | ");
+        var result = unique.join(" | ");
         if (result.length > maxChars) {
             result = result.substring(0, maxChars) + "...";
         }
@@ -194,7 +190,7 @@ const UIAutomator = (function () {
  */
     function captureDebug(filename) {
         try {
-            const path = "/sdcard/fold7-agent/" + (filename || "debug_" + Date.now() + ".png");
+            var path = "/sdcard/fold7-agent/" + (filename || "debug_" + Date.now() + ".png");
             files.createWithDirs(path);
             captureScreen(path);
             log("📸 截图已保存:", path);
@@ -236,19 +232,19 @@ const UIAutomator = (function () {
                 humanDelay(cmd.delay_ms || 800);
                 break;
             case "swipe": {
-                const dir = cmd.target;
-                const w = device.width;
-                const h = device.height;
-                const cx = w / 2;
-                const cy = h / 2;
+                var dir = cmd.target;
+                var w = device.width;
+                var h = device.height;
+                var cx1 = w / 2;
+                var cy1 = h / 2;
                 if (dir === "up") {
-                    bezierSwipe(cx, cy + 400, cx, cy - 400, 400);
+                    bezierSwipe(cx1, cy1 + 400, cx1, cy1 - 400, 400);
                 } else if (dir === "down") {
-                    bezierSwipe(cx, cy - 400, cx, cy + 400, 400);
+                    bezierSwipe(cx1, cy1 - 400, cx1, cy1 + 400, 400);
                 } else if (dir === "left") {
-                    bezierSwipe(cx + 400, cy, cx - 400, cy, 400);
+                    bezierSwipe(cx1 + 400, cy1, cx1 - 400, cy1, 400);
                 } else if (dir === "right") {
-                    bezierSwipe(cx - 400, cy, cx + 400, cy, 400);
+                    bezierSwipe(cx1 - 400, cy1, cx1 + 400, cy1, 400);
                 } else {
                     log("⚠️ 未知滑动方向:", dir);
                 }

@@ -3,9 +3,9 @@
  * 提供统一的音量键停止 + 停止标志检查
  */
 
-let _STOPPED = false;
-let _LISTENING = false;
-let _KEY_LISTENER = null;
+var _STOPPED = false;
+var _LISTENING = false;
+var _KEY_LISTENER = null;
 
 /**
  * 注册音量上键监听（只需调用一次）
@@ -82,8 +82,8 @@ function check() {
  */
 function safeSleep(ms) {
     if (typeof sleep !== "function") return;
-    const chunk = 500;
-    let remaining = ms;
+    var chunk = 500;
+    var remaining = ms;
     while (remaining > 0 && !_STOPPED) {
         sleep(Math.min(chunk, remaining));
         remaining -= chunk;

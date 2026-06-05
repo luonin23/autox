@@ -62,19 +62,20 @@ var ScriptExecutor = (function () {
         var execLogFile = EXEC_LOG + engineName + ".jsonl";
 
         // 给脚本注入执行元信息，方便脚本内部记录
+        // 注意：Rhino 不支持 globalThis，使用 var 在 IIFE 内声明即可
         var wrappedCode =
             '// ===== Fold7 Agent 生成脚本 =====\n' +
             '// 执行ID: ' + engineName + '\n' +
             '// 生成时间: ' + new Date().toLocaleString() + '\n' +
             '\n' +
             '(function(__execId, __logFile) {\n' +
-            '    // 注入全局执行标识\n' +
-            '    globalThis.__FOLD7_EXEC_ID = __execId;\n' +
-            '    globalThis.__FOLD7_LOG_FILE = __logFile;\n' +
+            '    // 执行标识（局部变量即可）\n' +
+            '    var __FOLD7_EXEC_ID = __execId;\n' +
+            '    var __FOLD7_LOG_FILE = __logFile;\n' +
             '\n' +
             '    // 重写 log，同时输出到文件便于监控\n' +
             '    var _origLog = log;\n' +
-            '    globalThis.log = function() {\n' +
+            '    var _customLog = function() {\n' +
             '        var args = Array.prototype.slice.call(arguments);\n' +
             '        var line = args.join(" ");\n' +
             '        _origLog.apply(null, args);\n' +
@@ -83,6 +84,8 @@ var ScriptExecutor = (function () {
             '            files.append(__logFile, record);\n' +
             '        } catch (e) {}\n' +
             '    };\n' +
+            '    // 将自定义 log 暴露给内部脚本使用\n' +
+            '    log = _customLog;\n' +
             '\n' +
             scriptCode + '\n' +
             '\n' +

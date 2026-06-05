@@ -3,9 +3,9 @@
  * 记录每次任务执行的指令、结果、截图，支持回溯和统计
  */
 
-const Logger = (function () {
-    const LOG_DIR = "/sdcard/fold7-agent/logs/";
-    const LOG_FILE = LOG_DIR + "history.jsonl";
+var Logger = (function () {
+    var LOG_DIR = "/sdcard/fold7-agent/logs/";
+    var LOG_FILE = LOG_DIR + "history.jsonl";
 
     // 确保日志目录存在
     try {
@@ -23,7 +23,7 @@ const Logger = (function () {
         record.timestamp = new Date().toISOString();
         record.device = device.model || "unknown";
 
-        const line = JSON.stringify(record) + "\n";
+        var line = JSON.stringify(record) + "\n";
         try {
             // AutoX.js 的 files 追加写入
             files.append(LOG_FILE, line);
@@ -88,11 +88,11 @@ const Logger = (function () {
         n = n || 20;
         try {
             if (!files.exists(LOG_FILE)) return [];
-            const content = files.read(LOG_FILE);
-            const lines = content.trim().split("\n").filter(function (l) {
+            var content = files.read(LOG_FILE);
+            var lines = content.trim().split("\n").filter(function (l) {
                 return l.trim().length > 0;
             });
-            const records = lines.map(function (line) {
+            var records = lines.map(function (line) {
                 try {
                     return JSON.parse(line);
                 } catch (e) {
@@ -114,14 +114,14 @@ const Logger = (function () {
     function cleanOldLogs() {
         try {
             if (!files.exists(LOG_FILE)) return;
-            const content = files.read(LOG_FILE);
-            const lines = content.trim().split("\n").filter(function (l) {
+            var content = files.read(LOG_FILE);
+            var lines = content.trim().split("\n").filter(function (l) {
                 return l.trim().length > 0;
             });
-            const maxLines = 5000; // 最多保留 5000 条记录
+            var maxLines = 5000; // 最多保留 5000 条记录
             if (lines.length <= maxLines) return;
 
-            const keepLines = lines.slice(-maxLines);
+            var keepLines = lines.slice(-maxLines);
             files.write(LOG_FILE, keepLines.join("\n") + "\n");
             log("📝 日志已清理，保留最近 " + keepLines.length + " 条记录");
         } catch (e) {
@@ -133,10 +133,10 @@ const Logger = (function () {
      * 获取今日统计
      */
     function todayStats() {
-        const today = new Date().toISOString().substring(0, 10);
-        const records = readRecent(1000);
-        let success = 0;
-        let failed = 0;
+        var today = new Date().toISOString().substring(0, 10);
+        var records = readRecent(1000);
+        var success = 0;
+        var failed = 0;
         records.forEach(function (r) {
             if (r.timestamp && r.timestamp.indexOf(today) === 0) {
                 if (r.event === "task_end") {

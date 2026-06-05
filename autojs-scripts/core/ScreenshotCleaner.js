@@ -3,20 +3,20 @@
  * 清理 /sdcard/fold7-agent/ 下过期的 debug 截图，保留最近 N 张
  */
 
-const SCREENSHOT_DIR = "/sdcard/fold7-agent/";
-const MAX_SCREENSHOTS = 50;     // 最多保留 50 张
-const MAX_AGE_DAYS = 7;         // 超过 7 天的删除
+var SCREENSHOT_DIR = "/sdcard/fold7-agent/";
+var MAX_SCREENSHOTS = 50;     // 最多保留 50 张
+var MAX_AGE_DAYS = 7;         // 超过 7 天的删除
 
 /**
  * 执行清理
  */
 function clean() {
     try {
-        const dir = SCREENSHOT_DIR;
+        var dir = SCREENSHOT_DIR;
         if (!files.exists(dir)) return { cleaned: 0, kept: 0 };
 
         // AutoX.js 的 files.listDir 返回文件名数组
-        let list = [];
+        var list = [];
         try {
             list = files.listDir(dir);
         } catch (e) {
@@ -25,12 +25,12 @@ function clean() {
         }
 
         // 筛选出 png/jpg 文件
-        const screenshots = [];
+        var screenshots = [];
         list.forEach(function (name) {
             if (name.match(/\.(png|jpg|jpeg)$/i)) {
-                const path = dir + name;
+                var path = dir + name;
                 try {
-                    const stat = files.stat(path);
+                    var stat = files.stat(path);
                     screenshots.push({
                         name: name,
                         path: path,
@@ -49,9 +49,9 @@ function clean() {
             return b.time - a.time;
         });
 
-        let cleaned = 0;
-        const now = Date.now();
-        const maxAge = MAX_AGE_DAYS * 24 * 60 * 60 * 1000;
+        var cleaned = 0;
+        var now = Date.now();
+        var maxAge = MAX_AGE_DAYS * 24 * 60 * 60 * 1000;
 
         screenshots.forEach(function (s, index) {
             // 超过数量限制或超过天数的删除
@@ -66,7 +66,7 @@ function clean() {
             }
         });
 
-        const kept = screenshots.length - cleaned;
+        var kept = screenshots.length - cleaned;
         log("📸 截图清理完成: 保留 " + kept + " 张, 删除 " + cleaned + " 张");
         return { cleaned: cleaned, kept: kept };
     } catch (e) {

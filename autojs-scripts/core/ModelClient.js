@@ -26,34 +26,8 @@
  */
 
 var ModelClient = (function () {
-    // ===================== 配置加载 =====================
-    var CONFIG = null;
-    try {
-        CONFIG = require("../config.js");
-    } catch (e) {
-        log("⚠️ 未找到 config.js，使用默认配置");
-        CONFIG = {
-            provider: "kimi",
-            format: "anthropic",
-            kimi: {
-                baseUrl: "https://api.kimi.com/coding",
-                apiKey: "",
-                model: "kimi-for-coding",
-            },
-            deepseek: {
-                baseUrl: "https://api.deepseek.com/v1",
-                apiKey: "",
-                model: "deepseek-chat",
-            },
-            local: {
-                baseUrl: "http://127.0.0.1:8080/v1",
-                apiKey: "",
-                model: "local",
-            },
-            maxSteps: 15,
-        };
-    }
-    // ===================================================
+    var AppConfig = require("./AppConfig.js");
+    var CONFIG = AppConfig.read();
 
     var SYSTEM_PROMPT = buildSystemPrompt();
 
@@ -61,6 +35,7 @@ var ModelClient = (function () {
         return (
             "你是 Fold7 Agent — 专业的 AutoX.js 脚本生成专家。\n" +
             "你的唯一任务是将用户的自然语言指令转化为可直接在 AutoX.js 环境中执行的完整 JavaScript 脚本。\n\n" +
+            "重要架构边界：模型配置、对话、生成、日志监控、错误修复都属于 Fold7 Agent APP 框架本身；你生成的业务脚本只能执行手机自动化步骤，不能再把 API Key、模型请求、对话逻辑或 Agent 循环写进脚本。\n\n" +
 
             "# ========== 你必须严格遵守的输出格式 ==========\n\n" +
             "你只能输出一个 JSON 对象（不要包裹 markdown 代码块标记）。\n\n" +
@@ -73,6 +48,10 @@ var ModelClient = (function () {
 
             "# ========== 框架 API 文档（你必须熟悉） ==========\n\n" +
             "项目根目录: /sdcard/AutoX/fold7-agent/autojs-scripts/\n\n" +
+            "推荐 require 绝对路径，避免 engines.execScript 下相对路径失效：\n" +
+            "- var UIAutomator = require('/sdcard/AutoX/fold7-agent/autojs-scripts/core/UIAutomator.js');\n" +
+            "- var StopHelper = require('/sdcard/AutoX/fold7-agent/autojs-scripts/core/StopHelper.js');\n" +
+            "- var Logger = require('/sdcard/AutoX/fold7-agent/autojs-scripts/core/Logger.js');\n\n" +
 
             "## UIAutomator.js — 无障碍操作封装\n" +
             "require 路径: './core/UIAutomator.js'\n" +
@@ -165,9 +144,9 @@ var ModelClient = (function () {
             "1. 生成的脚本必须是完整的、可直接执行的代码\n" +
             "2. 脚本结构模板：\n" +
             "   (function() {\n" +
-            "       var UIAutomator = require('./core/UIAutomator.js');\n" +
-            "       var StopHelper = require('./core/StopHelper.js');\n" +
-            "       var Logger = require('./core/Logger.js');\n" +
+            "       var UIAutomator = require('/sdcard/AutoX/fold7-agent/autojs-scripts/core/UIAutomator.js');\n" +
+            "       var StopHelper = require('/sdcard/AutoX/fold7-agent/autojs-scripts/core/StopHelper.js');\n" +
+            "       var Logger = require('/sdcard/AutoX/fold7-agent/autojs-scripts/core/Logger.js');\n" +
             "       StopHelper.setup();\n" +
             "       Logger.taskStart('script', '指令描述', null);\n" +
             "       try {\n" +
@@ -200,11 +179,13 @@ var ModelClient = (function () {
     }
 
     function getCfg() {
+        CONFIG = AppConfig.read();
         var provider = CONFIG.provider || "kimi";
         return CONFIG[provider] || CONFIG.kimi;
     }
 
     function getProvider() {
+        CONFIG = AppConfig.read();
         return CONFIG.provider || "kimi";
     }
 
@@ -390,7 +371,20 @@ var ModelClient = (function () {
     return {
         callModel: callModel,
         callModelWithHistory: callModelWithHistory,
+        reloadConfig: function () {
+            CONFIG = AppConfig.read();
+            return CONFIG;
+        },
+        setConfig: function (cfg) {
+            CONFIG = cfg || AppConfig.read();
+            return CONFIG;
+        },
+        getConfig: function () {
+            CONFIG = AppConfig.read();
+            return CONFIG;
+        },
         setApiKey: function (key) {
+            CONFIG = AppConfig.read();
             if (!CONFIG.kimi) CONFIG.kimi = {};
             CONFIG.kimi.apiKey = key;
         },

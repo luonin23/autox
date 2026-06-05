@@ -20,6 +20,7 @@ if (typeof global.device === "undefined") {
         modelResponseIndex: 0,
         logs: [],               // 捕获的日志
         actions: [],            // 记录的操作序列
+        files: {},              // 内存文件系统
     };
 
     global._mockState = _state;
@@ -291,15 +292,54 @@ if (typeof global.device === "undefined") {
     global.files = {
         createWithDirs: function (path) {
             console.log("[MOCK] createWithDirs('" + path + "')");
+            if (!_state.files[path]) _state.files[path] = "";
         },
         append: function (path, content) {
             console.log("[MOCK] append('" + path + "', '" + content.substring(0, 50) + "...')");
+            _state.files[path] = (_state.files[path] || "") + content;
         },
         exists: function (path) {
-            return false;
+            if (_state.files[path] !== undefined) return true;
+            const prefix = path.charAt(path.length - 1) === "/" ? path : path + "/";
+            return Object.keys(_state.files).some(function (p) {
+                return p.indexOf(prefix) === 0;
+            });
         },
         read: function (path) {
-            return "";
+            return _state.files[path] || "";
+        },
+        write: function (path, content) {
+            console.log("[MOCK] write('" + path + "', " + String(content).length + " chars)");
+            _state.files[path] = String(content);
+        },
+        remove: function (path) {
+            console.log("[MOCK] remove('" + path + "')");
+            delete _state.files[path];
+            return true;
+        },
+        path: function (path) {
+            return path;
+        },
+        listDir: function (dir) {
+            const prefix = dir.charAt(dir.length - 1) === "/" ? dir : dir + "/";
+            const names = [];
+            Object.keys(_state.files).forEach(function (p) {
+                if (p.indexOf(prefix) === 0) {
+                    const rest = p.substring(prefix.length);
+                    if (rest && rest.indexOf("/") < 0) names.push(rest);
+                }
+            });
+            return names;
+        },
+        isFile: function (path) {
+            return _state.files[path] !== undefined;
+        },
+        stat: function (path) {
+            return {
+                lastModified: function () {
+                    return Date.now();
+                },
+            };
         },
     };
     global.captureScreen = function (path) {
