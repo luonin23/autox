@@ -2,6 +2,9 @@ package com.fold7.agent;
 
 import android.accessibilityservice.AccessibilityService;
 import android.accessibilityservice.GestureDescription;
+import android.content.ClipData;
+import android.content.ClipboardManager;
+import android.content.Context;
 import android.graphics.Bitmap;
 import android.graphics.Path;
 import android.os.Build;
@@ -11,8 +14,10 @@ import android.util.DisplayMetrics;
 import android.view.WindowManager;
 import android.view.accessibility.AccessibilityEvent;
 import android.view.accessibility.AccessibilityNodeInfo;
+import android.view.accessibility.AccessibilityWindowInfo;
 import com.fold7.agent.core.LogStore;
 import java.io.ByteArrayOutputStream;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
@@ -92,13 +97,47 @@ public class Fold7AccessibilityService extends AccessibilityService {
     }
 
     public boolean input(String text) {
+        ArrayList<AccessibilityNodeInfo> roots = new ArrayList<>();
         AccessibilityNodeInfo root = getRootInActiveWindow();
-        if (root == null) return false;
-        AccessibilityNodeInfo edit = findEditable(root);
+        if (root != null) roots.add(root);
+        for (AccessibilityWindowInfo window : getWindows()) {
+            AccessibilityNodeInfo windowRoot = window.getRoot();
+            if (windowRoot != null) roots.add(windowRoot);
+        }
+        for (AccessibilityNodeInfo item : roots) {
+            AccessibilityNodeInfo focus = item.findFocus(AccessibilityNodeInfo.FOCUS_INPUT);
+            if (setText(focus, text)) return true;
+        }
+        for (AccessibilityNodeInfo item : roots) {
+            AccessibilityNodeInfo edit = findEditable(item);
+            if (setText(edit, text)) return true;
+        }
+        for (AccessibilityNodeInfo item : roots) {
+            AccessibilityNodeInfo focus = item.findFocus(AccessibilityNodeInfo.FOCUS_INPUT);
+            if (pasteText(focus, text)) return true;
+        }
+        return false;
+    }
+
+    private boolean setText(AccessibilityNodeInfo edit, String text) {
         if (edit == null) return false;
+        edit.performAction(AccessibilityNodeInfo.ACTION_FOCUS);
         Bundle args = new Bundle();
         args.putCharSequence(AccessibilityNodeInfo.ACTION_ARGUMENT_SET_TEXT_CHARSEQUENCE, text);
-        return edit.performAction(AccessibilityNodeInfo.ACTION_SET_TEXT, args);
+        boolean ok = edit.performAction(AccessibilityNodeInfo.ACTION_SET_TEXT, args);
+        if (ok) LogStore.add("RUN", "input_text set_text ok");
+        return ok;
+    }
+
+    private boolean pasteText(AccessibilityNodeInfo edit, String text) {
+        if (edit == null) return false;
+        edit.performAction(AccessibilityNodeInfo.ACTION_FOCUS);
+        ClipboardManager clipboard = (ClipboardManager) getSystemService(Context.CLIPBOARD_SERVICE);
+        if (clipboard == null) return false;
+        clipboard.setPrimaryClip(ClipData.newPlainText("fold7_input", text));
+        boolean ok = edit.performAction(AccessibilityNodeInfo.ACTION_PASTE);
+        if (ok) LogStore.add("RUN", "input_text paste ok");
+        return ok;
     }
 
     public String snapshot() {
