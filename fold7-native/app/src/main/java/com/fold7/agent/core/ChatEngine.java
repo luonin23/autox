@@ -26,6 +26,16 @@ public class ChatEngine {
         return pendingPlan != null;
     }
 
+    public String pendingTaskId() {
+        return pendingTaskId;
+    }
+
+    public void clearPendingPlan() {
+        pendingPlan = null;
+        pendingPlanRequest = "";
+        pendingTaskId = "";
+    }
+
     public void setTaskMode(String mode) {
         if ("timed".equals(mode) || "loop".equals(mode)) taskMode = mode;
         else taskMode = "normal";

@@ -31,15 +31,14 @@ public class ActionExecutor {
     }
 
     public String executeOne(JSONObject action) throws Exception {
-        String name = action.optString("action");
+        String name = actionName(action);
         LogStore.add("RUN", name + " " + describe(action));
-        boolean ok = run(action);
-        if (!ok) throw new Exception("动作失败：" + describe(action));
+        boolean ok = run(action, name);
+        if (!ok) throw new Exception("动作失败：" + describe(action) + " json=" + action.toString());
         return name + " ok";
     }
 
-    private boolean run(JSONObject action) throws Exception {
-        String name = action.optString("action");
+    private boolean run(JSONObject action, String name) throws Exception {
         if ("open_settings".equals(name)) {
             Intent intent = new Intent(Settings.ACTION_SETTINGS);
             intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
@@ -85,7 +84,8 @@ public class ActionExecutor {
             return svc.tap(x, y);
         }
         if ("open_app".equals(name)) {
-            return openApp(action.optString("package"), action.optString("appName"));
+            String target = first(action, "package", "packageName", "pkg", "text", "appName", "app", "label");
+            return openApp(target, first(action, "appName", "app", "label", "text"));
         }
         return false;
     }
@@ -105,17 +105,48 @@ public class ActionExecutor {
     }
 
     private String describe(JSONObject action) {
-        String name = action.optString("action", "unknown");
+        String name = actionName(action);
         if (action.has("text")) return name + "(" + action.optString("text") + ")";
         if (action.has("appName")) return name + "(" + action.optString("appName") + ")";
+        if (action.has("app")) return name + "(" + action.optString("app") + ")";
+        if (action.has("label")) return name + "(" + action.optString("label") + ")";
         if (action.has("package")) return name + "(" + action.optString("package") + ")";
+        if (action.has("packageName")) return name + "(" + action.optString("packageName") + ")";
         return name;
+    }
+
+    private String actionName(JSONObject action) {
+        String raw = first(action, "action", "type", "name", "command", "operation");
+        if (raw == null) return "unknown";
+        String value = raw.trim();
+        if (value.length() == 0) return "unknown";
+        String key = value.replace("-", "_").replace(" ", "_").toLowerCase();
+        if ("openapp".equals(key) || "launch_app".equals(key) || "start_app".equals(key) || "app_open".equals(key)) return "open_app";
+        if ("taptext".equals(key) || "click_text".equals(key) || "clicktext".equals(key) || "tap_by_text".equals(key)) return "tap_text";
+        if ("tapxy".equals(key) || "tap_coordinate".equals(key) || "tap_coordinates".equals(key) || "click_xy".equals(key) || "click".equals(key) || "tap".equals(key)) return "tap_xy";
+        if ("inputtext".equals(key) || "set_text".equals(key) || "type_text".equals(key) || "input".equals(key)) return "input_text";
+        if ("go_home".equals(key) || "press_home".equals(key) || "home_screen".equals(key)) return "home";
+        if ("go_back".equals(key) || "press_back".equals(key)) return "back";
+        if ("settings".equals(key)) return "open_settings";
+        return key;
+    }
+
+    private String first(JSONObject action, String... keys) {
+        for (String key : keys) {
+            String value = action.optString(key, "");
+            if (value != null && value.trim().length() > 0) return value;
+        }
+        return "";
     }
 
     private boolean openApp(String pkg, String appName) {
         PackageManager pm = context.getPackageManager();
         try {
-            if (pkg == null || pkg.length() == 0) pkg = findPackage(pm, appName);
+            if (pkg == null || pkg.length() == 0 || !pkg.contains(".")) {
+                String mapped = knownPackage(pkg);
+                if (mapped.length() > 0) pkg = mapped;
+            }
+            if (pkg == null || pkg.length() == 0 || !pkg.contains(".")) pkg = findPackage(pm, appName);
             if (pkg == null || pkg.length() == 0) return false;
             Intent intent = pm.getLaunchIntentForPackage(pkg);
             if (intent == null) return false;
@@ -135,6 +166,18 @@ public class ActionExecutor {
             CharSequence label = pm.getApplicationLabel(app);
             if (label != null && label.toString().contains(appName)) return app.packageName;
         }
+        return "";
+    }
+
+    private String knownPackage(String appName) {
+        if (appName == null) return "";
+        String name = appName.trim().toLowerCase();
+        if (name.length() == 0) return "";
+        if (name.contains("微信") || name.contains("wechat")) return "com.tencent.mm";
+        if (name.contains("飞书") || name.contains("lark")) return "com.ss.android.lark";
+        if (name.contains("抖音")) return "com.ss.android.ugc.aweme";
+        if (name.contains("高德")) return "com.autonavi.minimap";
+        if (name.contains("美团")) return "com.meituan.phoenix";
         return "";
     }
 

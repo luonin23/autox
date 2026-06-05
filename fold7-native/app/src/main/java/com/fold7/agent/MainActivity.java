@@ -30,7 +30,6 @@ import com.fold7.agent.core.ChatEngine;
 import com.fold7.agent.core.ConfigStore;
 import com.fold7.agent.core.LogStore;
 import com.fold7.agent.core.ModelClient;
-import com.fold7.agent.core.RuntimeAgent;
 import com.fold7.agent.core.TaskScheduler;
 import com.fold7.agent.core.TaskStore;
 import org.json.JSONObject;
@@ -405,30 +404,10 @@ public class MainActivity extends Activity implements LogStore.Listener {
         final TaskStore.TaskRecord task = tasks.find(taskId);
         if (task == null) return;
         Toast.makeText(this, "开始执行任务：" + task.title, Toast.LENGTH_SHORT).show();
-        new Thread(new Runnable() {
-            public void run() {
-                try {
-                    String result = new RuntimeAgent(new ModelClient(config), executor).execute(task.request, new JSONObject(task.planJson));
-                    tasks.updateExecution(task.id, "done", result);
-                    LogStore.task("Managed task executed: " + task.title);
-                    runOnUiThread(new Runnable() {
-                        public void run() {
-                            Toast.makeText(MainActivity.this, "任务执行完成", Toast.LENGTH_LONG).show();
-                            showTab(2);
-                        }
-                    });
-                } catch (final Exception e) {
-                    tasks.updateExecution(task.id, "failed", e.getMessage());
-                    LogStore.add("ERR", e.getMessage());
-                    runOnUiThread(new Runnable() {
-                        public void run() {
-                            Toast.makeText(MainActivity.this, "任务失败：" + e.getMessage(), Toast.LENGTH_LONG).show();
-                            showTab(2);
-                        }
-                    });
-                }
-            }
-        }).start();
+        tasks.updateExecution(task.id, "running", "前台服务正在执行，运行时 AI 会继续观察目标 App 页面。");
+        LogStore.add("RUN", "starting foreground runtime: " + task.title);
+        TaskRuntimeService.start(this, task.id, false);
+        showTab(2);
     }
 
     private View docs() {
@@ -603,6 +582,12 @@ public class MainActivity extends Activity implements LogStore.Listener {
     private void sendChat() {
         final String input = chatInput.getText().toString().trim();
         if (input.length() == 0) return;
+        if (chat.hasPendingPlan() && isExecuteIntent(input)) {
+            chatInput.setText("");
+            hideKeyboard();
+            executePendingPlan();
+            return;
+        }
         addMessage(true, input);
         chatInput.setText("");
         hideKeyboard();
@@ -626,27 +611,32 @@ public class MainActivity extends Activity implements LogStore.Listener {
         }).start();
     }
 
+    private boolean isExecuteIntent(String input) {
+        String t = input.trim().toLowerCase();
+        return t.equals("执行") || t.equals("开始执行") || t.equals("run") || t.equals("go");
+    }
+
     private void executePendingPlan() {
         addMessage(true, "执行");
-        addMessage(false, "开始执行...");
-        new Thread(new Runnable() {
-            public void run() {
-                try {
-                    if (!config.hasModel()) throw new Exception("请先配置并启用模型");
-                    final String reply = chat.executePending(executor);
-                    runOnUiThread(new Runnable() { public void run() { replaceLastMessage(reply); } });
-                } catch (final Exception e) {
-                    chat.reset();
-                    LogStore.add("ERR", e.getMessage());
-                    runOnUiThread(new Runnable() {
-                        public void run() {
-                            replaceLastMessage("执行失败：" + e.getMessage() + "\n\n你可以继续输入新的指令，我会重新开始处理。");
-                            Toast.makeText(MainActivity.this, "执行失败：" + e.getMessage(), Toast.LENGTH_LONG).show();
-                        }
-                    });
-                }
-            }
-        }).start();
+        if (!config.hasModel()) {
+            addMessage(false, "执行失败：请先配置并启用模型。");
+            return;
+        }
+        String taskId = chat.pendingTaskId();
+        if (taskId == null || taskId.length() == 0) {
+            addMessage(false, "当前没有待执行的动作计划。");
+            return;
+        }
+        TaskStore.TaskRecord task = tasks.find(taskId);
+        if (task == null) {
+            addMessage(false, "执行失败：未找到已保存的任务计划。");
+            chat.clearPendingPlan();
+            return;
+        }
+        tasks.updateExecution(task.id, "running", "前台服务正在执行，运行时 AI 会继续观察目标 App 页面。");
+        TaskRuntimeService.start(this, task.id, false);
+        chat.clearPendingPlan();
+        addMessage(false, "已启动前台运行服务。你可以到 Manage 查看任务状态和运行日志。");
     }
 
     private String localFallback(String input) throws Exception {
