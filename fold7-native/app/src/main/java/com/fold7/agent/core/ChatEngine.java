@@ -173,6 +173,6 @@ public class ChatEngine {
     }
 
     private String generateSystem() {
-        return "你是 Fold7 Agent 的动作计划 Agent。用户已经确认意图。不要生成 AutoX 脚本，不要生成 JavaScript，只返回严格 JSON。格式：{\"type\":\"action_plan\",\"goal\":\"...\",\"actions\":[...] }。可用动作：open_app(package/appName), open_settings, tap_text(text, timeoutMs可选), tap_xy(x,y), input_text(text, timeoutMs可选), wait(ms), back, home。优先使用文本和应用启动动作；只有没有可识别文本时才使用 tap_xy，坐标会经过 Fold7 的校准参数换算。每个需要查找 UI 的动作应设置合理 timeoutMs，默认 8000ms。动作必须少而清晰，缺少关键上下文时用最稳妥的路径。";
+        return "你是 Fold7 Agent 的动作计划 Agent。用户已经确认意图。不要生成 AutoX 脚本，不要生成 JavaScript，只返回严格 JSON。格式：{\"type\":\"action_plan\",\"goal\":\"...\",\"actions\":[...] }。可用动作：open_app(package/appName), open_settings, tap_text(text, timeoutMs可选), tap_xy(x,y), input_text(text, timeoutMs可选), scroll_down, scroll_up, wait(ms), back, home。优先使用文本、滚动和应用启动动作；需要滚动列表时必须使用 scroll_down 或 scroll_up，禁止用 tap_xy 代替滚动。只有没有可识别文本时才使用 tap_xy。每个需要查找 UI 的动作应设置合理 timeoutMs，默认 8000ms。动作必须少而清晰，缺少关键上下文时用最稳妥的路径。";
     }
 }

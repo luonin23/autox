@@ -76,6 +76,17 @@ public class ActionExecutor {
             sleepInterruptibly(Math.max(100, Math.min(10000, action.optInt("ms", 800))));
             return true;
         }
+        if ("scroll_down".equals(name) || "scroll_up".equals(name)) {
+            Fold7AccessibilityService svc = Fold7AccessibilityService.instance();
+            if (svc == null) throw new Exception("无障碍服务未开启，无法滚动");
+            DisplayMetrics metrics = realMetrics();
+            float x = metrics.widthPixels * 0.5f;
+            float top = metrics.heightPixels * 0.28f;
+            float bottom = metrics.heightPixels * 0.76f;
+            boolean down = "scroll_down".equals(name);
+            LogStore.add("RUN", name + " swipe(" + round(x) + "," + round(down ? bottom : top) + " -> " + round(x) + "," + round(down ? top : bottom) + ")");
+            return svc.swipe(x, down ? bottom : top, x, down ? top : bottom, action.optLong("durationMs", 420));
+        }
         if ("input_text".equals(name)) {
             Fold7AccessibilityService svc = Fold7AccessibilityService.instance();
             if (svc == null) throw new Exception("无障碍服务未开启，无法输入文字");
@@ -195,6 +206,8 @@ public class ActionExecutor {
         if ("taptext".equals(key) || "click_text".equals(key) || "clicktext".equals(key) || "tap_by_text".equals(key)) return "tap_text";
         if ("tapxy".equals(key) || "tap_coordinate".equals(key) || "tap_coordinates".equals(key) || "click_xy".equals(key) || "click".equals(key) || "tap".equals(key)) return "tap_xy";
         if ("inputtext".equals(key) || "set_text".equals(key) || "type_text".equals(key) || "input".equals(key)) return "input_text";
+        if ("scroll_down".equals(key) || "swipe_up".equals(key) || "scroll".equals(key)) return "scroll_down";
+        if ("scroll_up".equals(key) || "swipe_down".equals(key)) return "scroll_up";
         if ("go_home".equals(key) || "press_home".equals(key) || "home_screen".equals(key)) return "home";
         if ("go_back".equals(key) || "press_back".equals(key)) return "back";
         if ("settings".equals(key)) return "open_settings";

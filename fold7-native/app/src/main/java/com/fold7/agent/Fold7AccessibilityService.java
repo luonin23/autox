@@ -74,6 +74,15 @@ public class Fold7AccessibilityService extends AccessibilityService {
         return dispatchGesture(gesture, null, null);
     }
 
+    public boolean swipe(float fromX, float fromY, float toX, float toY, long durationMs) {
+        Path path = new Path();
+        path.moveTo(fromX, fromY);
+        path.lineTo(toX, toY);
+        GestureDescription.StrokeDescription stroke = new GestureDescription.StrokeDescription(path, 0, Math.max(180, durationMs));
+        GestureDescription gesture = new GestureDescription.Builder().addStroke(stroke).build();
+        return dispatchGesture(gesture, null, null);
+    }
+
     public int screenshotWidth() {
         return lastScreenshotWidth;
     }
