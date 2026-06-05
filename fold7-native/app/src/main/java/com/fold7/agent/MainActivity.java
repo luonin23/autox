@@ -64,6 +64,7 @@ public class MainActivity extends Activity implements LogStore.Listener {
     private int tab = 0;
     private int settingsPage = 0;
     private String editingTaskId = "";
+    private String editingModelId = "";
     private String chatTaskMode = "normal";
 
     @Override
@@ -455,6 +456,7 @@ public class MainActivity extends Activity implements LogStore.Listener {
         }
         page.addView(settingsOption("增加自定义模型", "新增 DeepSeek、本地模型或其它兼容 OpenAI/Anthropic 的服务。", new View.OnClickListener() {
             public void onClick(View v) {
+                editingModelId = "";
                 settingsPage = 3;
                 showTab(4);
             }
@@ -465,16 +467,17 @@ public class MainActivity extends Activity implements LogStore.Listener {
 
     private View modelFormPage() {
         LinearLayout page = page();
-        page.addView(backHeader("新增自定义模型"));
+        final ConfigStore.ModelProfile editing = editingModelId.length() == 0 ? null : config.findModel(editingModelId);
+        page.addView(backHeader(editing == null ? "新增自定义模型" : "编辑模型"));
 
-        final EditText name = input("", "例如 DeepSeek");
-        final EditText provider = input("", "provider: kimi/deepseek/local");
-        final EditText format = input("", "format: openai/anthropic");
-        final EditText baseUrl = input("", "base URL");
-        final EditText apiKey = input("", "API Key");
+        final EditText name = input(editing == null ? "" : editing.name, "例如 DeepSeek");
+        final EditText provider = input(editing == null ? "" : editing.provider, "provider: kimi/deepseek/local");
+        final EditText format = input(editing == null ? "" : editing.format, "format: openai/anthropic");
+        final EditText baseUrl = input(editing == null ? "" : editing.baseUrl, "base URL");
+        final EditText apiKey = input(editing == null ? "" : editing.apiKey, "API Key");
         apiKey.setInputType(InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_VARIATION_PASSWORD);
-        final EditText model = input("", "model");
-        final EditText timeout = input("", "action timeout ms");
+        final EditText model = input(editing == null ? "" : editing.model, "model");
+        final EditText timeout = input(String.valueOf(config.actionTimeoutMs()), "action timeout ms");
         page.addView(labeled("Name", name));
         page.addView(labeled("Provider", provider));
         page.addView(labeled("Format", format));
@@ -488,12 +491,13 @@ public class MainActivity extends Activity implements LogStore.Listener {
         Button save = primaryButton("保存为模型");
         save.setOnClickListener(new View.OnClickListener() {
             public void onClick(View v) {
-                config.saveCustomModel(name.getText().toString(), provider.getText().toString(), format.getText().toString(),
+                config.saveModel(editing == null ? "" : editing.id, name.getText().toString(), provider.getText().toString(), format.getText().toString(),
                     baseUrl.getText().toString(), apiKey.getText().toString(), model.getText().toString());
                 config.saveActionTimeoutMs(Math.round(num(timeout, config.actionTimeoutMs())));
                 rebuildChat();
                 LogStore.add("CFG", "Model saved and activated: " + config.activeModelName());
                 Toast.makeText(MainActivity.this, "已启用模型：" + config.activeModelName(), Toast.LENGTH_SHORT).show();
+                editingModelId = "";
                 settingsPage = 1;
                 showTab(4);
             }
@@ -532,6 +536,7 @@ public class MainActivity extends Activity implements LogStore.Listener {
         Button back = ghostButton("返回");
         back.setOnClickListener(new View.OnClickListener() {
             public void onClick(View v) {
+                editingModelId = "";
                 settingsPage = settingsPage == 3 ? 1 : 0;
                 showTab(4);
             }
@@ -556,16 +561,33 @@ public class MainActivity extends Activity implements LogStore.Listener {
     }
 
     private View modelProfileCard(final ConfigStore.ModelProfile profile) {
+        LinearLayout card = new LinearLayout(this);
+        card.setOrientation(LinearLayout.VERTICAL);
+        card.setPadding(dp(14), dp(12), dp(14), dp(12));
+        card.setBackground(round(profile.id.equals(config.activeModelId()) ? SOFT : PANEL, dp(8)));
+        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        lp.topMargin = dp(8);
+        card.setLayoutParams(lp);
+
         TextView view = text((profile.id.equals(config.activeModelId()) ? "已启用  " : "可启用  ") + profile.name
             + "\n" + profile.provider + " / " + profile.format
             + "\n" + profile.model, 13, INK, false);
         view.setLineSpacing(dp(2), 1f);
-        view.setPadding(dp(14), dp(12), dp(14), dp(12));
-        view.setBackground(round(profile.id.equals(config.activeModelId()) ? SOFT : PANEL, dp(8)));
-        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
-        lp.topMargin = dp(8);
-        view.setLayoutParams(lp);
-        view.setOnClickListener(new View.OnClickListener() {
+        card.addView(view);
+
+        LinearLayout actions = new LinearLayout(this);
+        actions.setOrientation(LinearLayout.HORIZONTAL);
+        actions.setPadding(0, dp(10), 0, 0);
+        Button edit = ghostButton("编辑");
+        edit.setOnClickListener(new View.OnClickListener() {
+            public void onClick(View v) {
+                editingModelId = profile.id;
+                settingsPage = 3;
+                showTab(4);
+            }
+        });
+        Button activate = profile.id.equals(config.activeModelId()) ? ghostButton("已启用") : primaryButton("启用");
+        activate.setOnClickListener(new View.OnClickListener() {
             public void onClick(View v) {
                 if (config.activateModel(profile.id)) {
                     rebuildChat();
@@ -576,7 +598,12 @@ public class MainActivity extends Activity implements LogStore.Listener {
                 }
             }
         });
-        return view;
+        actions.addView(edit, new LinearLayout.LayoutParams(0, dp(42), 1));
+        LinearLayout.LayoutParams ap = new LinearLayout.LayoutParams(0, dp(42), 1);
+        ap.leftMargin = dp(10);
+        actions.addView(activate, ap);
+        card.addView(actions);
+        return card;
     }
 
     private void sendChat() {

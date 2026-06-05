@@ -57,10 +57,21 @@ public class ConfigStore {
     }
 
     public void saveCustomModel(String name, String provider, String format, String baseUrl, String apiKey, String model) {
-        String id = "model-" + System.currentTimeMillis();
+        saveModel("", name, provider, format, baseUrl, apiKey, model);
+    }
+
+    public void saveModel(String existingId, String name, String provider, String format, String baseUrl, String apiKey, String model) {
+        String id = existingId == null || existingId.length() == 0 ? "model-" + System.currentTimeMillis() : existingId;
         ModelProfile profile = new ModelProfile(id, empty(name, model), provider, format, baseUrl, apiKey, model);
         upsertModel(profile);
         activateModel(id);
+    }
+
+    public ModelProfile findModel(String id) {
+        for (ModelProfile profile : modelProfiles()) {
+            if (profile.id.equals(id)) return profile;
+        }
+        return null;
     }
 
     public boolean activateModel(String id) {
