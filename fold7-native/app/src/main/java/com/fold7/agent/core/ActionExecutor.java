@@ -5,6 +5,7 @@ import android.content.Intent;
 import android.content.pm.ApplicationInfo;
 import android.content.pm.PackageManager;
 import android.provider.Settings;
+import android.util.DisplayMetrics;
 import com.fold7.agent.Fold7AccessibilityService;
 import org.json.JSONArray;
 import org.json.JSONObject;
@@ -79,8 +80,23 @@ public class ActionExecutor {
         if ("tap_xy".equals(name)) {
             Fold7AccessibilityService svc = Fold7AccessibilityService.instance();
             if (svc == null) throw new Exception("无障碍服务未开启，无法点击坐标");
-            float x = (float) (action.optDouble("x", 0) * config.scaleX() + config.offsetX());
-            float y = (float) (action.optDouble("y", 0) * config.scaleY() + config.offsetY());
+            DisplayMetrics metrics = context.getResources().getDisplayMetrics();
+            int imageWidth = svc.screenshotWidth() > 0 ? svc.screenshotWidth() : metrics.widthPixels;
+            int imageHeight = svc.screenshotHeight() > 0 ? svc.screenshotHeight() : metrics.heightPixels;
+            double inputX = action.optDouble("x", 0);
+            double inputY = action.optDouble("y", 0);
+            double screenX;
+            double screenY;
+            if (inputX > 0 && inputX <= 1 && inputY > 0 && inputY <= 1) {
+                screenX = inputX * metrics.widthPixels;
+                screenY = inputY * metrics.heightPixels;
+            } else {
+                screenX = imageWidth > 0 ? inputX * metrics.widthPixels / imageWidth : inputX;
+                screenY = imageHeight > 0 ? inputY * metrics.heightPixels / imageHeight : inputY;
+            }
+            float x = (float) (screenX * config.scaleX() + config.offsetX());
+            float y = (float) (screenY * config.scaleY() + config.offsetY());
+            LogStore.add("RUN", "tap_xy raw(" + round(inputX) + "," + round(inputY) + ") mapped(" + round(screenX) + "," + round(screenY) + ") actual(" + round(x) + "," + round(y) + ") image(" + imageWidth + "x" + imageHeight + ") screen(" + metrics.widthPixels + "x" + metrics.heightPixels + ") cal(sx=" + compact(config.scaleX()) + ",sy=" + compact(config.scaleY()) + ",ox=" + round(config.offsetX()) + ",oy=" + round(config.offsetY()) + ")");
             return svc.tap(x, y);
         }
         if ("open_app".equals(name)) {
@@ -106,6 +122,7 @@ public class ActionExecutor {
 
     private String describe(JSONObject action) {
         String name = actionName(action);
+        if (action.has("x") || action.has("y")) return name + "(" + round(action.optDouble("x", 0)) + "," + round(action.optDouble("y", 0)) + ")";
         if (action.has("text")) return name + "(" + action.optString("text") + ")";
         if (action.has("appName")) return name + "(" + action.optString("appName") + ")";
         if (action.has("app")) return name + "(" + action.optString("app") + ")";
@@ -113,6 +130,14 @@ public class ActionExecutor {
         if (action.has("package")) return name + "(" + action.optString("package") + ")";
         if (action.has("packageName")) return name + "(" + action.optString("packageName") + ")";
         return name;
+    }
+
+    private String round(double value) {
+        return String.valueOf(Math.round(value));
+    }
+
+    private String compact(float value) {
+        return String.format(java.util.Locale.US, "%.3f", value);
     }
 
     private String actionName(JSONObject action) {

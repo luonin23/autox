@@ -7,6 +7,7 @@ import android.graphics.Path;
 import android.os.Build;
 import android.os.Bundle;
 import android.util.Base64;
+import android.util.DisplayMetrics;
 import android.view.accessibility.AccessibilityEvent;
 import android.view.accessibility.AccessibilityNodeInfo;
 import com.fold7.agent.core.LogStore;
@@ -17,6 +18,8 @@ import java.util.concurrent.TimeUnit;
 
 public class Fold7AccessibilityService extends AccessibilityService {
     private static Fold7AccessibilityService current;
+    private volatile int lastScreenshotWidth;
+    private volatile int lastScreenshotHeight;
 
     public static Fold7AccessibilityService instance() {
         return current;
@@ -70,6 +73,14 @@ public class Fold7AccessibilityService extends AccessibilityService {
         return dispatchGesture(gesture, null, null);
     }
 
+    public int screenshotWidth() {
+        return lastScreenshotWidth;
+    }
+
+    public int screenshotHeight() {
+        return lastScreenshotHeight;
+    }
+
     public boolean input(String text) {
         AccessibilityNodeInfo root = getRootInActiveWindow();
         if (root == null) return false;
@@ -84,6 +95,11 @@ public class Fold7AccessibilityService extends AccessibilityService {
         AccessibilityNodeInfo root = getRootInActiveWindow();
         if (root == null) return "accessibility_root: unavailable";
         StringBuilder out = new StringBuilder();
+        DisplayMetrics metrics = getResources().getDisplayMetrics();
+        out.append("display=").append(metrics.widthPixels).append("x").append(metrics.heightPixels).append("\n");
+        if (lastScreenshotWidth > 0 && lastScreenshotHeight > 0) {
+            out.append("screenshot=").append(lastScreenshotWidth).append("x").append(lastScreenshotHeight).append("\n");
+        }
         out.append("package=").append(root.getPackageName()).append("\n");
         collect(root, out, 0, new int[] {0});
         return out.toString();
@@ -104,11 +120,11 @@ public class Fold7AccessibilityService extends AccessibilityService {
                     }
                     Bitmap copy = bitmap.copy(Bitmap.Config.ARGB_8888, false);
                     bitmap.recycle();
-                    Bitmap scaled = scale(copy, 768);
-                    if (scaled != copy) copy.recycle();
+                    lastScreenshotWidth = copy.getWidth();
+                    lastScreenshotHeight = copy.getHeight();
                     ByteArrayOutputStream bytes = new ByteArrayOutputStream();
-                    scaled.compress(Bitmap.CompressFormat.JPEG, 70, bytes);
-                    if (scaled != null) scaled.recycle();
+                    copy.compress(Bitmap.CompressFormat.JPEG, 70, bytes);
+                    copy.recycle();
                     out[0] = Base64.encodeToString(bytes.toByteArray(), Base64.NO_WRAP);
                 } catch (Exception e) {
                     LogStore.add("ERR", "screenshot failed: " + e.getMessage());
@@ -179,9 +195,4 @@ public class Fold7AccessibilityService extends AccessibilityService {
         return clean.length() > 48 ? clean.substring(0, 48) : clean;
     }
 
-    private Bitmap scale(Bitmap bitmap, int maxWidth) {
-        if (bitmap.getWidth() <= maxWidth) return bitmap;
-        int height = Math.max(1, Math.round(bitmap.getHeight() * (maxWidth / (float) bitmap.getWidth())));
-        return Bitmap.createScaledBitmap(bitmap, maxWidth, height, true);
-    }
 }
