@@ -20,7 +20,7 @@ function clean() {
         try {
             list = files.listDir(dir);
         } catch (e) {
-            log("⚠️ 读取截图目录失败:", e.message);
+            log("读取截图目录失败:", e.message);
             return { cleaned: 0, kept: 0, error: e.message };
         }
 
@@ -59,18 +59,18 @@ function clean() {
                 try {
                     files.remove(s.path);
                     cleaned++;
-                    log("🗑️ 已清理截图:", s.name);
+                    log("已清理截图:", s.name);
                 } catch (e) {
-                    log("⚠️ 删除截图失败:", s.name, e.message);
+                    log("删除截图失败:", s.name, e.message);
                 }
             }
         });
 
         var kept = screenshots.length - cleaned;
-        log("📸 截图清理完成: 保留 " + kept + " 张, 删除 " + cleaned + " 张");
+        log("截图清理完成: 保留 " + kept + " 张, 删除 " + cleaned + " 张");
         return { cleaned: cleaned, kept: kept };
     } catch (e) {
-        log("❌ 截图清理异常:", e.message);
+        log("截图清理异常:", e.message);
         return { cleaned: 0, kept: 0, error: e.message };
     }
 }

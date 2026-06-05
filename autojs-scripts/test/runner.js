@@ -12,6 +12,7 @@ var UIAutomator = require("../core/UIAutomator.js");
 var ModelClient = require("../core/ModelClient.js");
 var AppConfig = require("../core/AppConfig.js");
 var Logger = require("../core/Logger.js");
+var ChatEngine = require("../agent/ChatEngine.js");
 
 var passed = 0;
 var failed = 0;
@@ -58,6 +59,63 @@ test("ModelClient.callModelWithHistory 应返回脚本响应文本", function ()
         throw new Error("模型未返回脚本 JSON: " + raw);
     }
     if (raw.indexOf("UIAutomator") < 0) throw new Error("脚本缺少框架 API 引用");
+});
+
+test("ModelClient.buildApiUrl 应正确处理 Kimi base URL 与完整 endpoint", function () {
+    var anthropicUrl = ModelClient.buildApiUrl("kimi", "anthropic", "https://api.kimi.com/coding");
+    if (anthropicUrl !== "https://api.kimi.com/coding/v1/messages") {
+        throw new Error("Kimi Anthropic URL 错误: " + anthropicUrl);
+    }
+
+    var openaiUrl = ModelClient.buildApiUrl("kimi", "openai", "https://api.kimi.com/coding/v1/messages");
+    if (openaiUrl !== "https://api.kimi.com/coding/v1/chat/completions") {
+        throw new Error("Kimi OpenAI URL 错误: " + openaiUrl);
+    }
+
+    var moonshotUrl = ModelClient.buildApiUrl("kimi", "openai", "https://api.moonshot.cn/v1");
+    if (moonshotUrl !== "https://api.moonshot.cn/v1/chat/completions") {
+        throw new Error("Moonshot OpenAI URL 错误: " + moonshotUrl);
+    }
+});
+
+test("ChatEngine 首次收到需求时应先确认意图而不是生成脚本", function () {
+    assert.setModelResponses([
+        {
+            type: "confirmation",
+            original: "用微信给肖波发一句你晚上几点下班",
+            understanding: "通过微信给肖波发送一条下班时间询问信息",
+            steps: [
+                "打开微信",
+                "找到肖波联系人",
+                "进入对话框并发送：你晚上几点下班",
+            ],
+            question: "请确认我的理解是否正确。如果正确，请回复：正确；如果错误，请直接纠正。",
+        },
+    ]);
+
+    var messages = [];
+    var scripts = [];
+    var statuses = [];
+    var engine = ChatEngine.create({
+        onMessage: function (msg) {
+            messages.push(msg);
+        },
+        onScript: function (code, desc) {
+            scripts.push({ code: code, desc: desc });
+        },
+        onStatus: function (status) {
+            statuses.push(status);
+        },
+    });
+
+    engine.send("用微信给肖波发一句你晚上几点下班");
+
+    var text = messages.join("\n");
+    if (scripts.length !== 0) throw new Error("首次请求不应生成脚本");
+    if (text.indexOf("我收到的用户请求原话是") < 0) throw new Error("未展示用户原话确认");
+    if (text.indexOf("打开微信") < 0 || text.indexOf("肖波") < 0) throw new Error("未展示动作拆解");
+    if (text.indexOf("请确认") < 0) throw new Error("未要求用户确认");
+    if (statuses[statuses.length - 1] !== "等待用户确认") throw new Error("状态应等待用户确认");
 });
 
 test("UIAutomator.safeClick 应点击节点", function () {

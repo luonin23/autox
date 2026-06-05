@@ -11,7 +11,7 @@ var Logger = (function () {
     try {
         files.createWithDirs(LOG_DIR);
     } catch (e) {
-        log("⚠️ 创建日志目录失败:", e.message);
+        log("创建日志目录失败:", e.message);
     }
 
     /**
@@ -28,7 +28,7 @@ var Logger = (function () {
             // AutoX.js 的 files 追加写入
             files.append(LOG_FILE, line);
         } catch (e) {
-            log("⚠️ 写入日志失败:", e.message);
+            log("写入日志失败:", e.message);
         }
     }
 
@@ -103,7 +103,7 @@ var Logger = (function () {
             });
             return records.slice(-n);
         } catch (e) {
-            log("⚠️ 读取日志失败:", e.message);
+            log("读取日志失败:", e.message);
             return [];
         }
     }
@@ -123,9 +123,9 @@ var Logger = (function () {
 
             var keepLines = lines.slice(-maxLines);
             files.write(LOG_FILE, keepLines.join("\n") + "\n");
-            log("📝 日志已清理，保留最近 " + keepLines.length + " 条记录");
+            log("日志已清理，保留最近 " + keepLines.length + " 条记录");
         } catch (e) {
-            log("⚠️ 日志清理失败:", e.message);
+            log("日志清理失败:", e.message);
         }
     }
 

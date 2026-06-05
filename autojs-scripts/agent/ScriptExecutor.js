@@ -22,7 +22,7 @@ var ScriptExecutor = (function () {
     try {
         files.createWithDirs(LOG_DIR);
     } catch (e) {
-        log("⚠️ 创建日志目录失败:", e.message);
+        log("创建日志目录失败:", e.message);
     }
 
     /**
@@ -36,6 +36,56 @@ var ScriptExecutor = (function () {
             screenshot: screenshot || null,
             timestamp: new Date().toISOString(),
         };
+    }
+
+    function mergeFileLogs(logs, execLogFile) {
+        try {
+            if (!files.exists(execLogFile)) return logs;
+            var raw = files.read(execLogFile) || "";
+            var lines = raw.split("\n");
+            var seen = {};
+            for (var si = 0; si < logs.length; si++) {
+                seen[String(logs[si].time) + "|" + String(logs[si].message)] = true;
+            }
+            for (var i = 0; i < lines.length; i++) {
+                var line = String(lines[i] || "").trim();
+                if (!line) continue;
+                try {
+                    var item = JSON.parse(line);
+                    var msg = item.msg || line;
+                    var time = item.t || Date.now();
+                    var key = String(time) + "|" + String(msg);
+                    if (!seen[key]) {
+                        logs.push({ time: time, level: "log", message: msg });
+                        seen[key] = true;
+                    }
+                } catch (e) {
+                    var rawKey = "raw|" + line;
+                    if (!seen[rawKey]) {
+                        logs.push({ time: Date.now(), level: "log", message: line });
+                        seen[rawKey] = true;
+                    }
+                }
+            }
+        } catch (e2) {}
+        return logs;
+    }
+
+    function findError(logs) {
+        for (var j = 0; j < logs.length; j++) {
+            var msg = logs[j].message || "";
+            if (msg.indexOf("音量键监听") >= 0) continue;
+            if (msg.indexOf("脚本执行出错") >= 0 ||
+                msg.indexOf("执行异常") >= 0 ||
+                msg.indexOf("启动应用失败") >= 0 ||
+                msg.indexOf("无法执行脚本") >= 0 ||
+                msg.indexOf("ScriptException") >= 0 ||
+                msg.indexOf("TypeError") >= 0 ||
+                msg.indexOf("SyntaxError") >= 0) {
+                return msg;
+            }
+        }
+        return null;
     }
 
     /**
@@ -97,7 +147,7 @@ var ScriptExecutor = (function () {
                 // 使用 engines.execScript 在独立引擎中运行
                 engines.execScript(engineName, wrappedCode);
             } catch (e) {
-                log("❌ 脚本启动失败:", e.message);
+                log("脚本启动失败:", e.message);
                 if (!completed) {
                     completed = true;
                     onComplete(createReport(false, logs, "脚本启动失败: " + e.message));
@@ -144,6 +194,7 @@ var ScriptExecutor = (function () {
                 try {
                     engines.stopEngine(engineName);
                 } catch (e) {}
+                mergeFileLogs(logs, execLogFile);
                 completed = true;
                 onComplete(createReport(false, logs, "执行超时（" + timeout / 1000 + "秒）"));
             }
@@ -153,10 +204,13 @@ var ScriptExecutor = (function () {
         var pollThread = threads.start(function () {
             var checkInterval = 2000;
             var maxWait = timeout + 10000;
+            var minObserve = Math.min(12000, Math.max(6000, Math.floor(timeout / 5)));
             var waited = 0;
+            var missingCount = 0;
             while (waited < maxWait && !completed && !stopped) {
                 sleep(checkInterval);
                 waited += checkInterval;
+                mergeFileLogs(logs, execLogFile);
 
                 // 检查引擎是否还在运行
                 var stillRunning = false;
@@ -170,21 +224,18 @@ var ScriptExecutor = (function () {
                     }
                 } catch (e) {}
 
-                if (!stillRunning && !completed) {
+                if (stillRunning) {
+                    missingCount = 0;
+                } else {
+                    missingCount++;
+                }
+
+                if (!stillRunning && missingCount >= 2 && waited >= minObserve && !completed) {
                     // 引擎已结束
                     completed = true;
-                    // 判断是成功还是失败：检查日志中是否有错误
-                    var hasError = false;
-                    var errorMsg = null;
-                    for (var j = 0; j < logs.length; j++) {
-                        var msg = logs[j].message || "";
-                        if (msg.indexOf("❌") >= 0 || msg.indexOf("Error") >= 0 || msg.indexOf("error") >= 0) {
-                            hasError = true;
-                            errorMsg = msg;
-                            break;
-                        }
-                    }
-                    onComplete(createReport(!hasError, logs, errorMsg));
+                    mergeFileLogs(logs, execLogFile);
+                    var errorMsg = findError(logs);
+                    onComplete(createReport(!errorMsg, logs, errorMsg));
                     break;
                 }
             }

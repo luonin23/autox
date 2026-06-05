@@ -61,24 +61,35 @@ var ModelClient = (function () {
         return baseUrl;
     }
 
+    function stripKnownEndpoint(clean) {
+        clean = normalizeBaseUrl(clean);
+        if (clean.indexOf("/chat/completions") >= 0) {
+            return clean.replace(/\/chat\/completions$/, "");
+        }
+        if (clean.indexOf("/messages") >= 0) {
+            return clean.replace(/\/messages$/, "");
+        }
+        return clean;
+    }
+
     function buildApiUrl(provider, format, baseUrl) {
-        var clean = normalizeBaseUrl(baseUrl);
+        var clean = stripKnownEndpoint(baseUrl);
         var effectiveFormat = normalizeFormat(provider, format);
 
         if (effectiveFormat === "anthropic") {
-            if (clean.indexOf("/messages") >= 0) return clean;
             if (provider === "kimi") {
                 if (clean.indexOf("/coding/v1") >= 0) return clean + "/messages";
                 if (clean.indexOf("/coding") >= 0) return clean + "/v1/messages";
             }
+            if (clean.indexOf("/v1") >= 0) return clean + "/messages";
             return clean + "/messages";
         }
 
-        if (clean.indexOf("/chat/completions") >= 0) return clean;
         if (provider === "kimi") {
             if (clean.indexOf("/coding/v1") >= 0) return clean + "/chat/completions";
             if (clean.indexOf("/coding") >= 0) return clean + "/v1/chat/completions";
         }
+        if (clean.indexOf("/v1") >= 0) return clean + "/chat/completions";
         return clean + "/chat/completions";
     }
 
@@ -218,7 +229,7 @@ var ModelClient = (function () {
             "           Logger.taskEnd('script', true, '完成', 步数);\n" +
             "       } catch (e) {\n" +
             "           Logger.errorLog(e.message, null);\n" +
-            "           log('❌ 脚本执行出错: ' + e.message);\n" +
+            "           log('脚本执行出错: ' + e.message);\n" +
             "       } finally {\n" +
             "           StopHelper.teardown();\n" +
             "       }\n" +
@@ -304,7 +315,7 @@ var ModelClient = (function () {
             };
         }
 
-        toastLog("🧠 正在思考...");
+        toastLog("正在思考...");
         writeModelLog("request", {
             provider: provider,
             format: format,
@@ -328,7 +339,7 @@ var ModelClient = (function () {
                 body: errBody.substring(0, 500),
             });
             if (retry < MAX_RETRY) {
-                log("⚠️ 模型请求失败 (" + res.statusCode + ")，" + (retry + 1) + "/" + (MAX_RETRY + 1) + " 次重试...");
+                log("模型请求失败 (" + res.statusCode + ")，" + (retry + 1) + "/" + (MAX_RETRY + 1) + " 次重试...");
                 sleep(1000 * (retry + 1));
                 return callModel(instruction, screenContext, retry + 1);
             }
@@ -401,7 +412,7 @@ var ModelClient = (function () {
             };
         }
 
-        toastLog("🧠 正在思考...");
+        toastLog("正在思考...");
         writeModelLog("request_history", {
             provider: provider,
             format: format,
@@ -424,7 +435,7 @@ var ModelClient = (function () {
                 body: errBody.substring(0, 500),
             });
             if (retry < MAX_RETRY) {
-                log("⚠️ 模型请求失败 (" + res.statusCode + ")，" + (retry + 1) + "/" + (MAX_RETRY + 1) + " 次重试...");
+                log("模型请求失败 (" + res.statusCode + ")，" + (retry + 1) + "/" + (MAX_RETRY + 1) + " 次重试...");
                 sleep(1000 * (retry + 1));
                 return callModelWithHistory(messages, retry + 1);
             }

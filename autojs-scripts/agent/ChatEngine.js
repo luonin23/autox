@@ -1,13 +1,14 @@
 /**
  * ChatEngine — 对话引擎
  *
- * 管理完整的 AI 脚本生成 → 执行 → 调试 → 修复闭环：
+ * 管理完整的 AI 意图确认 → 脚本生成 → 执行 → 调试 → 修复闭环：
  *   1. 接收用户自然语言指令
- *   2. 调用 ModelClient 生成 AutoX.js 脚本
- *   3. 通过 ScriptExecutor 执行脚本
- *   4. 监控日志，捕获错误
- *   5. 出错时自动调用 AI 修复（带错误日志 + 屏幕截图）
- *   6. 重试直到成功或达到最大修复次数
+ *   2. 先让模型拆解并确认用户意图
+ *   3. 用户确认后调用 ModelClient 生成 AutoX.js 脚本
+ *   4. 通过 ScriptExecutor 执行脚本
+ *   5. 监控日志，捕获错误
+ *   6. 出错时自动调用 AI 修复（带错误日志 + 屏幕截图）
+ *   7. 重试直到成功或达到最大修复次数
  *
  * 用法：
  *   var ChatEngine = require("./agent/ChatEngine.js");
@@ -44,6 +45,7 @@ var ChatEngine = (function () {
         var conversation = [];
         var currentExecutor = null;
         var isRunning = false;
+        var pendingConfirmation = null;
 
         /**
          * 添加系统消息到对话历史
@@ -67,8 +69,8 @@ var ChatEngine = (function () {
         }
 
         /**
-         * 调用 AI 生成脚本（或提问）
-         * @param {string} phase "generate" | "fix"
+         * 调用 AI 进行意图确认、生成脚本或修复脚本
+         * @param {string} phase "confirm" | "generate" | "fix"
          * @param {object} extra 额外上下文
          */
         function callAI(phase, extra) {
@@ -79,7 +81,19 @@ var ChatEngine = (function () {
             var screen = extra.screen || "";
 
             var userContent;
-            if (phase === "generate") {
+            if (phase === "confirm") {
+                userContent =
+                    "用户原话：" + instruction + "\n\n" +
+                    "请只做意图理解和动作拆解，不要生成脚本，不要输出代码，不要执行。\n" +
+                    "请用 JSON 返回：\n" +
+                    "{\n" +
+                    '  "type": "confirmation",\n' +
+                    '  "original": "用户原话",\n' +
+                    '  "understanding": "你理解用户想完成什么",\n' +
+                    '  "steps": ["第1步", "第2步"],\n' +
+                    '  "question": "请确认我的理解是否正确。如果正确，请回复：正确；如果错误，请直接纠正。"\n' +
+                    "}";
+            } else if (phase === "generate") {
                 userContent = "用户指令：" + instruction + "\n\n请生成 AutoX.js 脚本。";
             } else if (phase === "fix") {
                 var logLines = [];
@@ -143,6 +157,41 @@ var ChatEngine = (function () {
             }
         }
 
+        function isConfirmationAnswer(text) {
+            var value = String(text || "").trim().toLowerCase();
+            var confirmations = ["正确", "确认", "是的", "对", "没错", "可以", "开始", "执行", "ok", "yes", "y"];
+            for (var i = 0; i < confirmations.length; i++) {
+                if (value === confirmations[i]) return true;
+            }
+            return value.indexOf("正确") >= 0 ||
+                value.indexOf("确认") >= 0 ||
+                value.indexOf("没错") >= 0 ||
+                value.indexOf("可以开始") >= 0 ||
+                value.indexOf("ok") >= 0 ||
+                value.indexOf("yes") >= 0;
+        }
+
+        function formatConfirmation(parsed, rawText, instruction) {
+            if (parsed && parsed.type === "confirmation") {
+                var lines = [];
+                lines.push("我收到的用户请求原话是：");
+                lines.push(parsed.original || instruction);
+                lines.push("");
+                lines.push("经过分析，我理解你希望我：");
+                var steps = parsed.steps || [];
+                for (var i = 0; i < steps.length; i++) {
+                    lines.push((i + 1) + ". " + steps[i]);
+                }
+                if (steps.length === 0 && parsed.understanding) {
+                    lines.push("1. " + parsed.understanding);
+                }
+                lines.push("");
+                lines.push(parsed.question || "请确认我的理解是否正确。如果正确，请回复：正确；如果错误，请直接纠正。");
+                return lines.join("\n");
+            }
+            return rawText || "请确认我的理解是否正确。如果正确，请回复：正确；如果错误，请直接纠正。";
+        }
+
         /**
          * 获取当前屏幕上下文（用于修复时）
          */
@@ -174,12 +223,12 @@ var ChatEngine = (function () {
                     currentExecutor = null;
 
                     if (report.success) {
-                        onStatus("✅ 执行成功");
+                        onStatus("执行成功");
                         Logger.taskEnd("agent", true, "任务完成", report.logs.length);
                         onComplete(report);
                     } else if (fixCount < MAX_FIX_RETRIES) {
                         // 自动修复
-                        onStatus("❌ 执行失败，正在分析并修复...");
+                        onStatus("执行失败，正在分析并修复...");
                         var screen = getScreenContext();
                         var errorInfo = report.error || "未知错误";
 
@@ -198,24 +247,24 @@ var ChatEngine = (function () {
                                 var parsed = parseResponse(fixResponse);
 
                                 if (parsed.type === "script" && parsed.code) {
-                                    onMessage("🔄 已生成修复版脚本，正在重新执行...");
+                                    onMessage("已生成修复版脚本，正在重新执行...");
                                     onScript(parsed.code, parsed.description || "修复版脚本");
                                     runWithAutoFix(parsed.code, instruction, fixCount + 1);
                                 } else {
-                                    onMessage("❌ 无法自动修复：" + (parsed.text || "AI 未返回脚本"));
+                                    onMessage("无法自动修复：" + (parsed.text || "AI 未返回脚本"));
                                     onStatus("修复失败");
                                     Logger.taskEnd("agent", false, "修复失败", report.logs.length);
                                     onComplete(report);
                                 }
                             } catch (e) {
-                                onMessage("❌ 修复过程出错：" + e.message);
+                                onMessage("修复过程出错：" + e.message);
                                 onStatus("修复失败");
                                 Logger.taskEnd("agent", false, "修复过程出错", report.logs.length);
                                 onComplete(report);
                             }
                         });
                     } else {
-                        onStatus("❌ 已达到最大修复次数，执行失败");
+                        onStatus("已达到最大修复次数，执行失败");
                         Logger.taskEnd("agent", false, "达到最大修复次数", report.logs.length);
                         onComplete(report);
                     }
@@ -223,52 +272,93 @@ var ChatEngine = (function () {
             });
         }
 
+        function requestConfirmation(instruction, isCorrection) {
+            pendingConfirmation = {
+                instruction: instruction,
+            };
+            onStatus("等待确认");
+            onMessage(isCorrection ? "正在根据您的纠正重新拆解任务..." : "正在理解您的指令并拆解动作...");
+
+            threads.start(function () {
+                try {
+                    var rawResponse = callAI("confirm", { instruction: instruction });
+                    addAssistant(rawResponse);
+                    var parsed = parseResponse(rawResponse);
+                    onMessage(formatConfirmation(parsed, rawResponse, instruction));
+                    onStatus("等待用户确认");
+                } catch (e) {
+                    onMessage("调用 AI 失败：" + e.message);
+                    onStatus("AI 调用失败");
+                    pendingConfirmation = null;
+                }
+            });
+        }
+
+        function generateAndExecute(instruction) {
+            onStatus("AI 正在生成脚本...");
+            onMessage("已确认任务，正在生成脚本...");
+
+            threads.start(function () {
+                try {
+                    var rawResponse = callAI("generate", { instruction: instruction });
+                    addAssistant(rawResponse);
+
+                    var parsed = parseResponse(rawResponse);
+
+                    if (parsed.type === "question") {
+                        onMessage(parsed.question || "需要更多信息");
+                        onStatus("等待用户回答");
+                        return;
+                    }
+
+                    if (parsed.type === "text") {
+                        onMessage(parsed.text || rawResponse);
+                        onStatus("就绪");
+                        return;
+                    }
+
+                    if (parsed.type === "script" && parsed.code) {
+                        onMessage("脚本已生成，准备执行...");
+                        onScript(parsed.code, parsed.description || "生成的脚本");
+                        runWithAutoFix(parsed.code, instruction, 0);
+                    } else {
+                        onMessage("AI 返回格式不正确，请重试\n原始返回:\n" + rawResponse.substring(0, 500));
+                        onStatus("生成失败");
+                    }
+                } catch (e) {
+                    onMessage("调用 AI 失败：" + e.message);
+                    onStatus("AI 调用失败");
+                }
+            });
+        }
+
         return {
             /**
-             * 发送用户指令，启动生成-执行-调试闭环
+             * 发送用户指令。首次发送只确认意图；用户确认后才生成、执行和调试。
              */
             send: function (instruction) {
                 if (isRunning) {
-                    onMessage("⚠️ 当前有任务正在执行，请等待完成或停止当前任务");
+                    onMessage("当前有任务正在执行，请等待完成或停止当前任务");
                     return;
                 }
 
                 addUser(instruction);
-                onStatus("🧠 AI 正在生成脚本...");
-                onMessage("🧠 正在理解您的指令并生成脚本...");
 
-                threads.start(function () {
-                    try {
-                        var rawResponse = callAI("generate", { instruction: instruction });
-                        addAssistant(rawResponse);
-
-                        var parsed = parseResponse(rawResponse);
-
-                        if (parsed.type === "question") {
-                            onMessage("❓ " + (parsed.question || "需要更多信息"));
-                            onStatus("等待用户回答");
-                            return;
-                        }
-
-                        if (parsed.type === "text") {
-                            onMessage(parsed.text || rawResponse);
-                            onStatus("就绪");
-                            return;
-                        }
-
-                        if (parsed.type === "script" && parsed.code) {
-                            onMessage("✅ 脚本已生成，准备执行...");
-                            onScript(parsed.code, parsed.description || "生成的脚本");
-                            runWithAutoFix(parsed.code, instruction, 0);
-                        } else {
-                            onMessage("⚠️ AI 返回格式不正确，请重试\n原始返回:\n" + rawResponse.substring(0, 500));
-                            onStatus("生成失败");
-                        }
-                    } catch (e) {
-                        onMessage("❌ 调用 AI 失败：" + e.message);
-                        onStatus("AI 调用失败");
+                if (pendingConfirmation) {
+                    if (isConfirmationAnswer(instruction)) {
+                        var confirmedInstruction = pendingConfirmation.instruction;
+                        pendingConfirmation = null;
+                        generateAndExecute(confirmedInstruction);
+                    } else {
+                        var revisedInstruction =
+                            "原始需求：" + pendingConfirmation.instruction + "\n" +
+                            "用户纠正：" + instruction;
+                        requestConfirmation(revisedInstruction, true);
                     }
-                });
+                    return;
+                }
+
+                requestConfirmation(instruction, false);
             },
 
             /**
@@ -278,10 +368,10 @@ var ChatEngine = (function () {
              */
             execute: function (scriptCode, instruction) {
                 if (isRunning) {
-                    onMessage("⚠️ 当前有任务正在执行，请等待完成或停止当前任务");
+                    onMessage("当前有任务正在执行，请等待完成或停止当前任务");
                     return;
                 }
-                onMessage("▶️ 正在执行脚本: " + (instruction || "手动执行"));
+                onMessage("正在执行脚本: " + (instruction || "手动执行"));
                 runWithAutoFix(scriptCode, instruction || "手动执行", 0);
             },
 
@@ -293,6 +383,7 @@ var ChatEngine = (function () {
                     currentExecutor.stop();
                     currentExecutor = null;
                 }
+                pendingConfirmation = null;
                 isRunning = false;
                 onStatus("已停止");
             },
@@ -301,28 +392,7 @@ var ChatEngine = (function () {
              * 回答 AI 的问题（当 AI 返回 question 类型时）
              */
             answer: function (answer) {
-                addUser(answer);
-                onStatus("🧠 AI 正在重新生成...");
-                onMessage("🧠 根据您的回答重新生成脚本...");
-
-                threads.start(function () {
-                    try {
-                        var rawResponse = callAI("generate", { instruction: answer });
-                        addAssistant(rawResponse);
-                        var parsed = parseResponse(rawResponse);
-
-                        if (parsed.type === "script" && parsed.code) {
-                            onScript(parsed.code, parsed.description || "生成的脚本");
-                            runWithAutoFix(parsed.code, answer, 0);
-                        } else if (parsed.type === "question") {
-                            onMessage("❓ " + (parsed.question || "需要更多信息"));
-                        } else {
-                            onMessage(parsed.text || rawResponse);
-                        }
-                    } catch (e) {
-                        onMessage("❌ 调用 AI 失败：" + e.message);
-                    }
-                });
+                this.send(answer);
             },
 
             /**

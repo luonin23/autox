@@ -16,7 +16,7 @@ function setup() {
     try {
         events.observeKey();
         _KEY_LISTENER = function () {
-            toastLog("⏹️ 用户按音量上键，正在停止...");
+            toastLog("用户按音量上键，正在停止...");
             _STOPPED = true;
             if (typeof engines !== "undefined") {
                 engines.stopAll();
@@ -25,7 +25,7 @@ function setup() {
         events.onKeyDown("volume_up", _KEY_LISTENER);
         _LISTENING = true;
     } catch (e) {
-        log("⚠️ 音量键监听设置失败:", e.message);
+        log("音量键监听未启用:", e.message);
     }
 }
 
@@ -41,7 +41,7 @@ function teardown() {
         }
         _LISTENING = false;
     } catch (e) {
-        log("⚠️ 音量键监听移除失败:", e.message);
+        log("音量键监听移除异常:", e.message);
     }
 }
 
@@ -50,7 +50,7 @@ function teardown() {
  */
 function showHint() {
     if (typeof toast === "function") {
-        toast("🔊 按【音量上键】可随时停止");
+        toast("按音量上键可随时停止");
     }
 }
 

@@ -161,6 +161,17 @@ if (typeof global.device === "undefined") {
         _state.actions.push({ type: "keycode", code });
         console.log("[MOCK] KeyCode(" + code + ")");
     };
+    global.threads = {
+        start: function (fn) {
+            console.log("[MOCK] threads.start(...)");
+            if (typeof fn === "function") fn();
+            return {
+                interrupt: function () {
+                    console.log("[MOCK] thread.interrupt()");
+                },
+            };
+        },
+    };
 
     // === HTTP ===
     global.http = {

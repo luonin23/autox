@@ -71,7 +71,7 @@ var UIAutomator = (function () {
             return ok;
         }
 
-        log("⚠️ 未找到可点击节点:", target);
+        log("未找到可点击节点:", target);
         return false;
     }
 
@@ -109,7 +109,7 @@ var UIAutomator = (function () {
             return true;
         }
 
-        log("⚠️ 未找到可长按节点:", target);
+        log("未找到可长按节点:", target);
         return false;
     }
 
@@ -134,7 +134,7 @@ var UIAutomator = (function () {
             return true;
         }
 
-        log("⚠️ 未找到输入框:", target);
+        log("未找到输入框:", target);
         return false;
     }
 
@@ -193,12 +193,88 @@ var UIAutomator = (function () {
             var path = "/sdcard/fold7-agent/" + (filename || "debug_" + Date.now() + ".png");
             files.createWithDirs(path);
             captureScreen(path);
-            log("📸 截图已保存:", path);
+            log("截图已保存:", path);
             return path;
         } catch (e) {
-            log("⚠️ 截图失败:", e.message);
+            log("截图失败:", e.message);
             return null;
         }
+    }
+
+    function goHome(delayMs) {
+        try {
+            var intent = new android.content.Intent(android.content.Intent.ACTION_MAIN);
+            intent.addCategory(android.content.Intent.CATEGORY_HOME);
+            intent.setFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK);
+            context.startActivity(intent);
+            humanDelay(delayMs || 800);
+            return true;
+        } catch (e) {
+            try {
+                shell("input keyevent KEYCODE_HOME", false);
+                humanDelay(delayMs || 800);
+                return true;
+            } catch (e2) {
+                try {
+                    home();
+                    humanDelay(delayMs || 800);
+                    return true;
+                } catch (e3) {
+                    log("返回桌面失败:", e3.message);
+                }
+            }
+        }
+        return false;
+    }
+
+    function launchTarget(target, delayMs) {
+        var name = String(target || "").trim();
+        try {
+            if (name === "设置" || name.toLowerCase() === "settings" || name.indexOf("系统设置") >= 0) {
+                var intent = new android.content.Intent(android.provider.Settings.ACTION_SETTINGS);
+                intent.setFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK);
+                context.startActivity(intent);
+                humanDelay(delayMs || 2000);
+                return true;
+            }
+        } catch (e0) {}
+
+        try {
+            if (typeof app !== "undefined" && app.getPackageName && app.launchPackage) {
+                var pkg = app.getPackageName(name);
+                if (pkg) {
+                    app.launchPackage(pkg);
+                    humanDelay(delayMs || 2000);
+                    return true;
+                }
+            }
+        } catch (e1) {}
+
+        try {
+            launchApp(name);
+            humanDelay(delayMs || 2000);
+            return true;
+        } catch (e2) {
+            log("启动应用失败:", name, e2.message);
+        }
+        return false;
+    }
+
+    function goBack(delayMs) {
+        try {
+            shell("input keyevent KEYCODE_BACK", false);
+            humanDelay(delayMs || 800);
+            return true;
+        } catch (e) {
+            try {
+                back();
+                humanDelay(delayMs || 800);
+                return true;
+            } catch (e2) {
+                log("返回失败:", e2.message);
+            }
+        }
+        return false;
     }
 
     /**
@@ -207,17 +283,16 @@ var UIAutomator = (function () {
      */
     function executeCommand(cmd) {
         if (!cmd || !cmd.action) {
-            log("⚠️ 无效指令对象:", JSON.stringify(cmd));
+            log("无效指令对象:", JSON.stringify(cmd));
             return false;
         }
 
-        log("▶️ 执行:", cmd.action, cmd.target || "", cmd.reason || "");
+        log("执行:", cmd.action, cmd.target || "", cmd.reason || "");
         toast(cmd.reason || cmd.action);
 
         switch (cmd.action) {
             case "launch":
-                launchApp(cmd.target);
-                humanDelay(cmd.delay_ms || 2000);
+                launchTarget(cmd.target, cmd.delay_ms || 2000);
                 break;
             case "click":
                 safeClick(cmd.target);
@@ -246,27 +321,25 @@ var UIAutomator = (function () {
                 } else if (dir === "right") {
                     bezierSwipe(cx1 - 400, cy1, cx1 + 400, cy1, 400);
                 } else {
-                    log("⚠️ 未知滑动方向:", dir);
+                    log("未知滑动方向:", dir);
                 }
                 humanDelay(cmd.delay_ms || 1000);
                 break;
             }
             case "back":
-                back();
-                humanDelay(cmd.delay_ms || 800);
+                goBack(cmd.delay_ms || 800);
                 break;
             case "home":
-                home();
-                humanDelay(cmd.delay_ms || 800);
+                goHome(cmd.delay_ms || 800);
                 break;
             case "wait":
                 humanDelay(cmd.delay_ms || 1000);
                 break;
             case "done":
-                toastLog("✅ 任务完成");
+                toastLog("任务完成");
                 return false; // 停止执行链
             default:
-                log("⚠️ 未知 action:", cmd.action);
+                log("未知 action:", cmd.action);
         }
         return true; // 继续下一步
     }
@@ -279,6 +352,9 @@ var UIAutomator = (function () {
         safeInput: safeInput,
         getScreenContext: getScreenContext,
         captureDebug: captureDebug,
+        launchTarget: launchTarget,
+        goHome: goHome,
+        goBack: goBack,
         executeCommand: executeCommand,
     };
 })();

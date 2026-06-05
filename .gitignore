@@ -19,6 +19,9 @@ models/*.bin
 # Build artifacts
 build/
 dist/
+apk-shell/build/
+apk-shell/app/src/main/assets/autojs-scripts/
+apk-shell/fold7-debug.keystore
 
 # IDE
 .idea/
