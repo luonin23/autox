@@ -31,6 +31,8 @@ public class RuntimeAgent {
         int failures = 0;
         int max = config == null ? 24 : config.maxSteps();
         if (context != null && config != null) {
+            config.saveCalibration(0f, 0f, 1f, 1f);
+            LogStore.add("CAL", "initialized coordinate calibration before runtime");
             String calibration = RuntimeCalibrator.calibrate(context, model, executor, config);
             transcript.append("0. ").append(calibration).append("\n");
         }

@@ -31,7 +31,10 @@ public class RuntimeCalibrator {
             CoordinateCalibrationActivity.Result result = CoordinateCalibrationActivity.waitResult(3500);
             if (result == null) throw new Exception("AI 坐标校准点击未命中校准页");
             if (Math.abs(result.offsetX) > MAX_OFFSET || Math.abs(result.offsetY) > MAX_OFFSET) {
-                throw new Exception("AI 坐标校准偏移过大：" + Math.round(result.offsetX) + "," + Math.round(result.offsetY));
+                config.saveCalibration(0f, 0f, 1f, 1f);
+                String summary = "AI 坐标校准偏移过大，已忽略并保持零偏移：offset(" + Math.round(result.offsetX) + "," + Math.round(result.offsetY) + ")";
+                LogStore.add("CAL", summary);
+                return summary;
             }
             config.saveCalibration(result.offsetX, result.offsetY, 1f, 1f);
             String summary = "AI 坐标校准完成：offset(" + Math.round(result.offsetX) + "," + Math.round(result.offsetY) + ")";
