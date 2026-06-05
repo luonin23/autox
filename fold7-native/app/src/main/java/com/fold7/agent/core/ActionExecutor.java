@@ -13,6 +13,7 @@ import org.json.JSONObject;
 import java.util.List;
 
 public class ActionExecutor {
+    private static final int MAX_RUNTIME_OFFSET = 96;
     private final Context context;
     private final ConfigStore config;
 
@@ -143,8 +144,15 @@ public class ActionExecutor {
         float x = (float) screenX;
         float y = (float) screenY;
         if (applyCalibration) {
-            x = (float) (screenX * config.scaleX() + config.offsetX());
-            y = (float) (screenY * config.scaleY() + config.offsetY());
+            float offsetX = config.offsetX();
+            float offsetY = config.offsetY();
+            if (Math.abs(offsetX) > MAX_RUNTIME_OFFSET || Math.abs(offsetY) > MAX_RUNTIME_OFFSET) {
+                LogStore.add("ERR", "ignored unsafe calibration offset(" + round(offsetX) + "," + round(offsetY) + ")");
+                offsetX = 0f;
+                offsetY = 0f;
+            }
+            x = (float) (screenX * config.scaleX() + offsetX);
+            y = (float) (screenY * config.scaleY() + offsetY);
         }
         return new Point(inputX, inputY, screenX, screenY, x, y, imageWidth, imageHeight, metrics.widthPixels, metrics.heightPixels);
     }

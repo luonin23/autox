@@ -6,7 +6,7 @@ import com.fold7.agent.Fold7AccessibilityService;
 import org.json.JSONObject;
 
 public class RuntimeCalibrator {
-    private static final int MAX_OFFSET = 520;
+    private static final int MAX_OFFSET = 96;
 
     public static String calibrate(Context context, ModelClient model, ActionExecutor executor, ConfigStore config) throws Exception {
         try {
@@ -14,6 +14,8 @@ public class RuntimeCalibrator {
             Fold7AccessibilityService service = Fold7AccessibilityService.instance();
             if (service == null) throw new Exception("无障碍服务未开启，无法执行 AI 坐标校准");
             LogStore.add("CAL", "starting AI coordinate calibration");
+            config.saveCalibration(0f, 0f, 1f, 1f);
+            LogStore.add("CAL", "cleared previous coordinate calibration");
             CoordinateCalibrationActivity.start(context);
             if (!CoordinateCalibrationActivity.waitReady(3000)) throw new Exception("AI 坐标校准页未就绪");
             Thread.sleep(350);
