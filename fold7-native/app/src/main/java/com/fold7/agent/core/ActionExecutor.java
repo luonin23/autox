@@ -25,13 +25,17 @@ public class ActionExecutor {
         StringBuilder out = new StringBuilder();
         for (int i = 0; i < actions.length(); i++) {
             JSONObject action = actions.getJSONObject(i);
-            String name = action.optString("action");
-            LogStore.add("RUN", (i + 1) + "/" + actions.length() + " " + name);
-            boolean ok = run(action);
-            out.append(i + 1).append(". ").append(name).append(ok ? " ok" : " failed").append("\n");
-            if (!ok) throw new Exception("动作失败：" + describe(action));
+            out.append(i + 1).append(". ").append(executeOne(action)).append("\n");
         }
         return out.toString();
+    }
+
+    public String executeOne(JSONObject action) throws Exception {
+        String name = action.optString("action");
+        LogStore.add("RUN", name + " " + describe(action));
+        boolean ok = run(action);
+        if (!ok) throw new Exception("动作失败：" + describe(action));
+        return name + " ok";
     }
 
     private boolean run(JSONObject action) throws Exception {

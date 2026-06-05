@@ -74,6 +74,15 @@ public class Fold7AccessibilityService extends AccessibilityService {
         return edit.performAction(AccessibilityNodeInfo.ACTION_SET_TEXT, args);
     }
 
+    public String snapshot() {
+        AccessibilityNodeInfo root = getRootInActiveWindow();
+        if (root == null) return "accessibility_root: unavailable";
+        StringBuilder out = new StringBuilder();
+        out.append("package=").append(root.getPackageName()).append("\n");
+        collect(root, out, 0, new int[] {0});
+        return out.toString();
+    }
+
     private AccessibilityNodeInfo clickableParent(AccessibilityNodeInfo node) {
         AccessibilityNodeInfo cur = node;
         for (int i = 0; cur != null && i < 6; i++) {
@@ -92,5 +101,35 @@ public class Fold7AccessibilityService extends AccessibilityService {
             if (hit != null) return hit;
         }
         return null;
+    }
+
+    private void collect(AccessibilityNodeInfo node, StringBuilder out, int depth, int[] count) {
+        if (node == null || depth > 5 || count[0] > 80) return;
+        CharSequence text = node.getText();
+        CharSequence desc = node.getContentDescription();
+        boolean useful = (text != null && text.length() > 0) || (desc != null && desc.length() > 0) || node.isEditable() || node.isClickable();
+        if (useful) {
+            count[0]++;
+            for (int i = 0; i < depth; i++) out.append("  ");
+            out.append("- class=").append(shortName(node.getClassName()));
+            if (text != null && text.length() > 0) out.append(" text=\"").append(limit(text.toString())).append("\"");
+            if (desc != null && desc.length() > 0) out.append(" desc=\"").append(limit(desc.toString())).append("\"");
+            if (node.isEditable()) out.append(" editable");
+            if (node.isClickable()) out.append(" clickable");
+            out.append("\n");
+        }
+        for (int i = 0; i < node.getChildCount(); i++) collect(node.getChild(i), out, depth + 1, count);
+    }
+
+    private String shortName(CharSequence value) {
+        if (value == null) return "";
+        String text = value.toString();
+        int i = text.lastIndexOf('.');
+        return i >= 0 ? text.substring(i + 1) : text;
+    }
+
+    private String limit(String value) {
+        String clean = value.replace("\n", " ").replace("\"", "'");
+        return clean.length() > 48 ? clean.substring(0, 48) : clean;
     }
 }

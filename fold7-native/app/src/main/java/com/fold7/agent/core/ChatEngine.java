@@ -7,6 +7,8 @@ public class ChatEngine {
     private final ModelClient model;
     private String pendingRequest = "";
     private String pendingConfirmation = "";
+    private JSONObject pendingPlan = null;
+    private String pendingPlanRequest = "";
 
     public ChatEngine(ModelClient model) {
         this.model = model;
@@ -16,17 +18,29 @@ public class ChatEngine {
         return pendingRequest.length() > 0;
     }
 
+    public boolean hasPendingPlan() {
+        return pendingPlan != null;
+    }
+
     public String handle(String input, ActionExecutor executor) throws Exception {
+        if (hasPendingPlan() && isExecute(input)) {
+            return executePending(executor);
+        }
+        if (hasPendingPlan()) {
+            pendingPlan = null;
+            pendingPlanRequest = "";
+        }
         if (waitingConfirmation()) {
             if (isConfirm(input)) {
                 String request = pendingRequest;
                 try {
                     String plan = model.complete(generateSystem(), request + "\n\n用户已确认意图，请生成动作计划 JSON。");
                     JSONObject json = extractJson(plan);
-                    String result = executor.execute(json);
-                    LogStore.task("AI plan executed: " + request);
-                    reset();
-                    return "已按确认后的动作计划执行。\n\n" + summarize(json) + "\n\n执行结果：\n" + result;
+                    pendingPlan = json;
+                    pendingPlanRequest = request;
+                    pendingRequest = "";
+                    pendingConfirmation = "";
+                    return "动作计划已生成，尚未执行。\n\n" + summarize(json) + "\n请点击“执行”或输入“执行”后，我才会开始运行。";
                 } catch (Exception e) {
                     reset();
                     throw e;
@@ -40,6 +54,23 @@ public class ChatEngine {
         JSONObject json = extractJson(reply);
         pendingConfirmation = readableConfirmation(json);
         return pendingConfirmation;
+    }
+
+    public String executePending(ActionExecutor executor) throws Exception {
+        if (pendingPlan == null) return "当前没有待执行的动作计划。";
+        JSONObject plan = pendingPlan;
+        String request = pendingPlanRequest;
+        try {
+            String result = new RuntimeAgent(model, executor).execute(request, plan);
+            LogStore.task("AI runtime executed: " + request);
+            pendingPlan = null;
+            pendingPlanRequest = "";
+            return "已执行动作计划。\n\n" + summarize(plan) + "\n\n执行结果：\n" + result;
+        } catch (Exception e) {
+            pendingPlan = null;
+            pendingPlanRequest = "";
+            throw e;
+        }
     }
 
     public String demoConfirm(String input) {
@@ -67,11 +98,18 @@ public class ChatEngine {
     public void reset() {
         pendingRequest = "";
         pendingConfirmation = "";
+        pendingPlan = null;
+        pendingPlanRequest = "";
     }
 
     private boolean isConfirm(String input) {
         String t = input.trim().toLowerCase();
         return t.equals("正确") || t.equals("确认") || t.equals("ok") || t.equals("yes") || t.equals("对");
+    }
+
+    private boolean isExecute(String input) {
+        String t = input.trim().toLowerCase();
+        return t.equals("执行") || t.equals("开始执行") || t.equals("run") || t.equals("go");
     }
 
     private String readableConfirmation(JSONObject json) {

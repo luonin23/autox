@@ -52,6 +52,7 @@ public class MainActivity extends Activity implements LogStore.Listener {
     private LinearLayout chatMessages;
     private EditText chatInput;
     private int tab = 0;
+    private int settingsPage = 0;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -133,7 +134,12 @@ public class MainActivity extends Activity implements LogStore.Listener {
         tv.setGravity(Gravity.CENTER);
         item.addView(iv, new LinearLayout.LayoutParams(dp(25), dp(25)));
         item.addView(tv);
-        item.setOnClickListener(new View.OnClickListener() { public void onClick(View v) { showTab(index); } });
+        item.setOnClickListener(new View.OnClickListener() {
+            public void onClick(View v) {
+                if (index == 4) settingsPage = 0;
+                showTab(index);
+            }
+        });
         tabBar.addView(item, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.MATCH_PARENT, 1));
     }
 
@@ -198,10 +204,15 @@ public class MainActivity extends Activity implements LogStore.Listener {
         chatInput.setPadding(dp(12), 0, dp(12), 0);
         Button send = primaryButton("发送");
         send.setOnClickListener(new View.OnClickListener() { public void onClick(View v) { sendChat(); } });
+        Button execute = ghostButton("执行");
+        execute.setOnClickListener(new View.OnClickListener() { public void onClick(View v) { executePendingPlan(); } });
         inputRow.addView(chatInput, new LinearLayout.LayoutParams(0, dp(52), 1));
         LinearLayout.LayoutParams sp = new LinearLayout.LayoutParams(dp(72), dp(52));
         sp.leftMargin = dp(8);
         inputRow.addView(send, sp);
+        LinearLayout.LayoutParams ep = new LinearLayout.LayoutParams(dp(72), dp(52));
+        ep.leftMargin = dp(8);
+        inputRow.addView(execute, ep);
         page.addView(inputRow);
         return page;
     }
@@ -228,14 +239,53 @@ public class MainActivity extends Activity implements LogStore.Listener {
     }
 
     private View settingsView() {
+        if (settingsPage == 1) return modelListPage();
+        if (settingsPage == 2) return scroll(calibrationOnlyPage());
+        if (settingsPage == 3) return modelFormPage();
+        return settingsMenu();
+    }
+
+    private View settingsMenu() {
         LinearLayout page = page();
+        page.addView(sectionTitle("设置"));
+        page.addView(settingsOption("模型配置", "管理 Kimi、DeepSeek 和自定义模型，点击列表项即可启用。", new View.OnClickListener() {
+            public void onClick(View v) {
+                settingsPage = 1;
+                showTab(4);
+            }
+        }));
+        page.addView(settingsOption("坐标校准", "配置坐标偏移和缩放，用于没有稳定文字节点的页面点击。", new View.OnClickListener() {
+            public void onClick(View v) {
+                settingsPage = 2;
+                showTab(4);
+            }
+        }));
+        addLogPanel(page);
+        return scroll(page);
+    }
+
+    private View modelListPage() {
+        LinearLayout page = page();
+        page.addView(backHeader("模型配置"));
         page.addView(sectionTitle("模型列表"));
         for (ConfigStore.ModelProfile profile : config.modelProfiles()) {
             page.addView(modelProfileCard(profile));
         }
+        page.addView(settingsOption("增加自定义模型", "新增 DeepSeek、本地模型或其它兼容 OpenAI/Anthropic 的服务。", new View.OnClickListener() {
+            public void onClick(View v) {
+                settingsPage = 3;
+                showTab(4);
+            }
+        }));
+        addLogPanel(page);
+        return scroll(page);
+    }
 
-        page.addView(sectionTitle("新增自定义模型"));
-        final EditText name = input(config.activeModelName(), "显示名称");
+    private View modelFormPage() {
+        LinearLayout page = page();
+        page.addView(backHeader("新增自定义模型"));
+
+        final EditText name = input("", "例如 DeepSeek");
         final EditText provider = input(config.provider(), "provider: kimi/deepseek/local");
         final EditText format = input(config.format(), "format: openai/anthropic");
         final EditText baseUrl = input(config.baseUrl(), "base URL");
@@ -262,6 +312,7 @@ public class MainActivity extends Activity implements LogStore.Listener {
                 chat = new ChatEngine(new ModelClient(config));
                 LogStore.add("CFG", "Model saved and activated: " + config.activeModelName());
                 Toast.makeText(MainActivity.this, "已启用模型：" + config.activeModelName(), Toast.LENGTH_SHORT).show();
+                settingsPage = 1;
                 showTab(4);
             }
         });
@@ -280,9 +331,46 @@ public class MainActivity extends Activity implements LogStore.Listener {
             }
         });
         page.addView(importConfig, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(46)));
-        page.addView(calibrationPanel());
         addLogPanel(page);
         return scroll(page);
+    }
+
+    private View calibrationOnlyPage() {
+        LinearLayout page = page();
+        page.addView(backHeader("坐标校准"));
+        page.addView(calibrationPanel());
+        addLogPanel(page);
+        return page;
+    }
+
+    private View backHeader(String label) {
+        LinearLayout row = new LinearLayout(this);
+        row.setOrientation(LinearLayout.HORIZONTAL);
+        row.setGravity(Gravity.CENTER_VERTICAL);
+        Button back = ghostButton("返回");
+        back.setOnClickListener(new View.OnClickListener() {
+            public void onClick(View v) {
+                settingsPage = settingsPage == 3 ? 1 : 0;
+                showTab(4);
+            }
+        });
+        TextView title = text(label, 18, INK, true);
+        title.setPadding(dp(12), 0, 0, 0);
+        row.addView(back, new LinearLayout.LayoutParams(dp(78), dp(42)));
+        row.addView(title, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1));
+        return row;
+    }
+
+    private View settingsOption(String title, String detail, View.OnClickListener listener) {
+        TextView view = text(title + "\n" + detail, 14, INK, false);
+        view.setLineSpacing(dp(3), 1f);
+        view.setPadding(dp(14), dp(14), dp(14), dp(14));
+        view.setBackground(round(PANEL, dp(8)));
+        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        lp.topMargin = dp(10);
+        view.setLayoutParams(lp);
+        view.setOnClickListener(listener);
+        return view;
     }
 
     private View modelProfileCard(final ConfigStore.ModelProfile profile) {
@@ -301,6 +389,7 @@ public class MainActivity extends Activity implements LogStore.Listener {
                     chat = new ChatEngine(new ModelClient(config));
                     LogStore.add("CFG", "Activated model: " + config.activeModelName());
                     Toast.makeText(MainActivity.this, "已启用模型：" + config.activeModelName(), Toast.LENGTH_SHORT).show();
+                    settingsPage = 1;
                     showTab(4);
                 }
             }
@@ -334,10 +423,33 @@ public class MainActivity extends Activity implements LogStore.Listener {
         }).start();
     }
 
+    private void executePendingPlan() {
+        addMessage(true, "执行");
+        addMessage(false, "开始执行...");
+        new Thread(new Runnable() {
+            public void run() {
+                try {
+                    if (!config.hasModel()) throw new Exception("请先配置并启用模型");
+                    final String reply = chat.executePending(executor);
+                    runOnUiThread(new Runnable() { public void run() { replaceLastMessage(reply); } });
+                } catch (final Exception e) {
+                    chat.reset();
+                    LogStore.add("ERR", e.getMessage());
+                    runOnUiThread(new Runnable() {
+                        public void run() {
+                            replaceLastMessage("执行失败：" + e.getMessage() + "\n\n你可以继续输入新的指令，我会重新开始处理。");
+                            Toast.makeText(MainActivity.this, "执行失败：" + e.getMessage(), Toast.LENGTH_LONG).show();
+                        }
+                    });
+                }
+            }
+        }).start();
+    }
+
     private String localFallback(String input) throws Exception {
         if (!chat.waitingConfirmation()) return chat.demoConfirm(input);
-        String result = chat.demoExecute(executor);
-        return "未检测到模型配置，已使用本机测试动作完成流程。\n\n执行结果：\n" + result;
+        chat.reset();
+        return "未检测到模型配置，无法生成真实动作计划。请先在 Settings 中启用模型。";
     }
 
     private void testModel() {
