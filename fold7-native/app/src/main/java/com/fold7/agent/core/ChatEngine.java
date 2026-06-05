@@ -19,13 +19,18 @@ public class ChatEngine {
     public String handle(String input, ActionExecutor executor) throws Exception {
         if (waitingConfirmation()) {
             if (isConfirm(input)) {
-                String plan = model.complete(generateSystem(), pendingRequest + "\n\n用户已确认意图，请生成动作计划 JSON。");
-                JSONObject json = extractJson(plan);
-                String result = executor.execute(json);
-                LogStore.task("AI plan executed: " + pendingRequest);
-                pendingRequest = "";
-                pendingConfirmation = "";
-                return "已按确认后的动作计划执行。\n\n" + summarize(json) + "\n\n执行结果：\n" + result;
+                String request = pendingRequest;
+                try {
+                    String plan = model.complete(generateSystem(), request + "\n\n用户已确认意图，请生成动作计划 JSON。");
+                    JSONObject json = extractJson(plan);
+                    String result = executor.execute(json);
+                    LogStore.task("AI plan executed: " + request);
+                    reset();
+                    return "已按确认后的动作计划执行。\n\n" + summarize(json) + "\n\n执行结果：\n" + result;
+                } catch (Exception e) {
+                    reset();
+                    throw e;
+                }
             }
             pendingRequest = input;
         } else {
@@ -52,8 +57,16 @@ public class ChatEngine {
         actions.put(new JSONObject().put("action", "wait").put("ms", 1200));
         actions.put(new JSONObject().put("action", "home"));
         plan.put("actions", actions);
+        try {
+            return executor.execute(plan);
+        } finally {
+            reset();
+        }
+    }
+
+    public void reset() {
         pendingRequest = "";
-        return executor.execute(plan);
+        pendingConfirmation = "";
     }
 
     private boolean isConfirm(String input) {
@@ -95,6 +108,6 @@ public class ChatEngine {
     }
 
     private String generateSystem() {
-        return "你是 Fold7 Agent 的动作计划 Agent。用户已经确认意图。不要生成 AutoX 脚本，不要生成 JavaScript，只返回严格 JSON。格式：{\"type\":\"action_plan\",\"goal\":\"...\",\"actions\":[...] }。可用动作：open_app(package/appName), open_settings, tap_text(text), tap_xy(x,y), input_text(text), wait(ms), back, home。优先使用文本和应用启动动作；只有没有可识别文本时才使用 tap_xy，坐标会经过 Fold7 的校准参数换算。动作必须少而清晰，缺少关键上下文时用最稳妥的路径。";
+        return "你是 Fold7 Agent 的动作计划 Agent。用户已经确认意图。不要生成 AutoX 脚本，不要生成 JavaScript，只返回严格 JSON。格式：{\"type\":\"action_plan\",\"goal\":\"...\",\"actions\":[...] }。可用动作：open_app(package/appName), open_settings, tap_text(text, timeoutMs可选), tap_xy(x,y), input_text(text, timeoutMs可选), wait(ms), back, home。优先使用文本和应用启动动作；只有没有可识别文本时才使用 tap_xy，坐标会经过 Fold7 的校准参数换算。每个需要查找 UI 的动作应设置合理 timeoutMs，默认 8000ms。动作必须少而清晰，缺少关键上下文时用最稳妥的路径。";
     }
 }

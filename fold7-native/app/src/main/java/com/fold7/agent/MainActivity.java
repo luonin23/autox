@@ -24,6 +24,7 @@ import android.widget.FrameLayout;
 import android.widget.LinearLayout;
 import android.widget.ScrollView;
 import android.widget.TextView;
+import android.widget.Toast;
 import com.fold7.agent.core.ActionExecutor;
 import com.fold7.agent.core.ChatEngine;
 import com.fold7.agent.core.ConfigStore;
@@ -154,7 +155,7 @@ public class MainActivity extends Activity implements LogStore.Listener {
         page.addView(sectionTitle("运行状态"));
         LinearLayout grid = new LinearLayout(this);
         grid.setOrientation(LinearLayout.VERTICAL);
-        grid.addView(statusCard("模型", config.hasModel() ? "已配置" : "未配置", config.model()));
+        grid.addView(statusCard("启用模型", config.hasModel() ? config.activeModelName() : "未配置", config.model()));
         grid.addView(statusCard("执行权限", Fold7AccessibilityService.instance() == null ? "待开启" : "已连接", "用于执行确认后的动作计划"));
         grid.addView(statusCard("今日任务", String.valueOf(LogStore.history().size()), "包含 AI 生成与手动测试任务"));
         page.addView(grid);
@@ -228,28 +229,39 @@ public class MainActivity extends Activity implements LogStore.Listener {
 
     private View settingsView() {
         LinearLayout page = page();
-        page.addView(sectionTitle("模型配置"));
+        page.addView(sectionTitle("模型列表"));
+        for (ConfigStore.ModelProfile profile : config.modelProfiles()) {
+            page.addView(modelProfileCard(profile));
+        }
+
+        page.addView(sectionTitle("新增自定义模型"));
+        final EditText name = input(config.activeModelName(), "显示名称");
         final EditText provider = input(config.provider(), "provider: kimi/deepseek/local");
         final EditText format = input(config.format(), "format: openai/anthropic");
         final EditText baseUrl = input(config.baseUrl(), "base URL");
         final EditText apiKey = input(config.apiKey(), "API Key");
         apiKey.setInputType(InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_VARIATION_PASSWORD);
         final EditText model = input(config.model(), "model");
+        final EditText timeout = input(String.valueOf(config.actionTimeoutMs()), "action timeout ms");
+        page.addView(labeled("Name", name));
         page.addView(labeled("Provider", provider));
         page.addView(labeled("Format", format));
         page.addView(labeled("Base URL", baseUrl));
         page.addView(labeled("API Key", apiKey));
         page.addView(labeled("Model", model));
+        page.addView(labeled("Action Timeout", timeout));
 
         LinearLayout buttons = new LinearLayout(this);
         buttons.setOrientation(LinearLayout.HORIZONTAL);
-        Button save = primaryButton("保存");
+        Button save = primaryButton("保存为模型");
         save.setOnClickListener(new View.OnClickListener() {
             public void onClick(View v) {
-                config.save(provider.getText().toString(), format.getText().toString(), baseUrl.getText().toString(),
-                    apiKey.getText().toString(), model.getText().toString(), config.maxSteps());
+                config.saveCustomModel(name.getText().toString(), provider.getText().toString(), format.getText().toString(),
+                    baseUrl.getText().toString(), apiKey.getText().toString(), model.getText().toString());
+                config.saveActionTimeoutMs(Math.round(num(timeout, config.actionTimeoutMs())));
                 chat = new ChatEngine(new ModelClient(config));
-                LogStore.add("CFG", "Model config saved");
+                LogStore.add("CFG", "Model saved and activated: " + config.activeModelName());
+                Toast.makeText(MainActivity.this, "已启用模型：" + config.activeModelName(), Toast.LENGTH_SHORT).show();
                 showTab(4);
             }
         });
@@ -273,6 +285,29 @@ public class MainActivity extends Activity implements LogStore.Listener {
         return scroll(page);
     }
 
+    private View modelProfileCard(final ConfigStore.ModelProfile profile) {
+        TextView view = text((profile.id.equals(config.activeModelId()) ? "已启用  " : "可启用  ") + profile.name
+            + "\n" + profile.provider + " / " + profile.format
+            + "\n" + profile.model, 13, INK, false);
+        view.setLineSpacing(dp(2), 1f);
+        view.setPadding(dp(14), dp(12), dp(14), dp(12));
+        view.setBackground(round(profile.id.equals(config.activeModelId()) ? SOFT : PANEL, dp(8)));
+        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        lp.topMargin = dp(8);
+        view.setLayoutParams(lp);
+        view.setOnClickListener(new View.OnClickListener() {
+            public void onClick(View v) {
+                if (config.activateModel(profile.id)) {
+                    chat = new ChatEngine(new ModelClient(config));
+                    LogStore.add("CFG", "Activated model: " + config.activeModelName());
+                    Toast.makeText(MainActivity.this, "已启用模型：" + config.activeModelName(), Toast.LENGTH_SHORT).show();
+                    showTab(4);
+                }
+            }
+        });
+        return view;
+    }
+
     private void sendChat() {
         final String input = chatInput.getText().toString().trim();
         if (input.length() == 0) return;
@@ -286,8 +321,14 @@ public class MainActivity extends Activity implements LogStore.Listener {
                     final String reply = config.hasModel() ? chat.handle(input, executor) : localFallback(input);
                     runOnUiThread(new Runnable() { public void run() { replaceLastMessage(reply); } });
                 } catch (final Exception e) {
+                    chat.reset();
                     LogStore.add("ERR", e.getMessage());
-                    runOnUiThread(new Runnable() { public void run() { replaceLastMessage("执行失败：" + e.getMessage()); } });
+                    runOnUiThread(new Runnable() {
+                        public void run() {
+                            replaceLastMessage("执行失败：" + e.getMessage() + "\n\n你可以继续输入新的指令，我会重新开始处理。");
+                            Toast.makeText(MainActivity.this, "执行失败：" + e.getMessage(), Toast.LENGTH_LONG).show();
+                        }
+                    });
                 }
             }
         }).start();
@@ -340,6 +381,11 @@ public class MainActivity extends Activity implements LogStore.Listener {
                     LogStore.add("TEST", result.replace("\n", " "));
                 } catch (Exception e) {
                     LogStore.add("ERR", e.getMessage());
+                    runOnUiThread(new Runnable() {
+                        public void run() {
+                            Toast.makeText(MainActivity.this, "本机动作测试失败，请查看日志", Toast.LENGTH_LONG).show();
+                        }
+                    });
                 }
             }
         }).start();

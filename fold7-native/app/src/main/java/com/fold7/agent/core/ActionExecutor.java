@@ -29,7 +29,7 @@ public class ActionExecutor {
             LogStore.add("RUN", (i + 1) + "/" + actions.length() + " " + name);
             boolean ok = run(action);
             out.append(i + 1).append(". ").append(name).append(ok ? " ok" : " failed").append("\n");
-            if (!ok) break;
+            if (!ok) throw new Exception("动作失败：" + describe(action));
         }
         return out.toString();
     }
@@ -53,7 +53,8 @@ public class ActionExecutor {
         }
         if ("back".equals(name)) {
             Fold7AccessibilityService svc = Fold7AccessibilityService.instance();
-            return svc != null && svc.back();
+            if (svc == null) throw new Exception("无障碍服务未开启，无法返回");
+            return svc.back();
         }
         if ("wait".equals(name)) {
             Thread.sleep(Math.max(100, Math.min(10000, action.optInt("ms", 800))));
@@ -61,15 +62,20 @@ public class ActionExecutor {
         }
         if ("input_text".equals(name)) {
             Fold7AccessibilityService svc = Fold7AccessibilityService.instance();
-            return svc != null && svc.input(action.optString("text"));
+            if (svc == null) throw new Exception("无障碍服务未开启，无法输入文字");
+            return waitFor(new Check() { public boolean ok() { return Fold7AccessibilityService.instance().input(action.optString("text")); } }, timeout(action));
         }
         if ("tap_text".equals(name)) {
             Fold7AccessibilityService svc = Fold7AccessibilityService.instance();
-            return svc != null && svc.tapText(action.optString("text"));
+            if (svc == null) throw new Exception("无障碍服务未开启，无法查找文字");
+            final String text = action.optString("text");
+            boolean ok = waitFor(new Check() { public boolean ok() { return Fold7AccessibilityService.instance().tapText(text); } }, timeout(action));
+            if (!ok) throw new Exception("超时未找到文字：" + text);
+            return true;
         }
         if ("tap_xy".equals(name)) {
             Fold7AccessibilityService svc = Fold7AccessibilityService.instance();
-            if (svc == null) return false;
+            if (svc == null) throw new Exception("无障碍服务未开启，无法点击坐标");
             float x = (float) (action.optDouble("x", 0) * config.scaleX() + config.offsetX());
             float y = (float) (action.optDouble("y", 0) * config.scaleY() + config.offsetY());
             return svc.tap(x, y);
@@ -78,6 +84,28 @@ public class ActionExecutor {
             return openApp(action.optString("package"), action.optString("appName"));
         }
         return false;
+    }
+
+    private int timeout(JSONObject action) {
+        int value = action.optInt("timeoutMs", config.actionTimeoutMs());
+        return Math.max(500, Math.min(30000, value));
+    }
+
+    private boolean waitFor(Check check, int timeoutMs) throws Exception {
+        long end = System.currentTimeMillis() + timeoutMs;
+        while (System.currentTimeMillis() < end) {
+            if (check.ok()) return true;
+            Thread.sleep(250);
+        }
+        return false;
+    }
+
+    private String describe(JSONObject action) {
+        String name = action.optString("action", "unknown");
+        if (action.has("text")) return name + "(" + action.optString("text") + ")";
+        if (action.has("appName")) return name + "(" + action.optString("appName") + ")";
+        if (action.has("package")) return name + "(" + action.optString("package") + ")";
+        return name;
     }
 
     private boolean openApp(String pkg, String appName) {
@@ -104,5 +132,9 @@ public class ActionExecutor {
             if (label != null && label.toString().contains(appName)) return app.packageName;
         }
         return "";
+    }
+
+    private interface Check {
+        boolean ok() throws Exception;
     }
 }
