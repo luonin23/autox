@@ -2,12 +2,18 @@ package com.fold7.agent;
 
 import android.accessibilityservice.AccessibilityService;
 import android.accessibilityservice.GestureDescription;
+import android.graphics.Bitmap;
 import android.graphics.Path;
+import android.os.Build;
 import android.os.Bundle;
+import android.util.Base64;
 import android.view.accessibility.AccessibilityEvent;
 import android.view.accessibility.AccessibilityNodeInfo;
 import com.fold7.agent.core.LogStore;
+import java.io.ByteArrayOutputStream;
 import java.util.List;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeUnit;
 
 public class Fold7AccessibilityService extends AccessibilityService {
     private static Fold7AccessibilityService current;
@@ -83,6 +89,46 @@ public class Fold7AccessibilityService extends AccessibilityService {
         return out.toString();
     }
 
+    public String screenshotBase64() {
+        if (Build.VERSION.SDK_INT < 30) return "";
+        final String[] out = new String[] {""};
+        final CountDownLatch latch = new CountDownLatch(1);
+        takeScreenshot(0, getMainExecutor(), new TakeScreenshotCallback() {
+            @Override
+            public void onSuccess(ScreenshotResult result) {
+                try {
+                    Bitmap bitmap = Bitmap.wrapHardwareBuffer(result.getHardwareBuffer(), result.getColorSpace());
+                    if (bitmap == null) {
+                        latch.countDown();
+                        return;
+                    }
+                    Bitmap copy = bitmap.copy(Bitmap.Config.ARGB_8888, false);
+                    bitmap.recycle();
+                    Bitmap scaled = scale(copy, 768);
+                    if (scaled != copy) copy.recycle();
+                    ByteArrayOutputStream bytes = new ByteArrayOutputStream();
+                    scaled.compress(Bitmap.CompressFormat.JPEG, 70, bytes);
+                    if (scaled != null) scaled.recycle();
+                    out[0] = Base64.encodeToString(bytes.toByteArray(), Base64.NO_WRAP);
+                } catch (Exception e) {
+                    LogStore.add("ERR", "screenshot failed: " + e.getMessage());
+                }
+                latch.countDown();
+            }
+
+            @Override
+            public void onFailure(int errorCode) {
+                LogStore.add("ERR", "screenshot error: " + errorCode);
+                latch.countDown();
+            }
+        });
+        try {
+            latch.await(2500, TimeUnit.MILLISECONDS);
+        } catch (Exception ignored) {
+        }
+        return out[0];
+    }
+
     private AccessibilityNodeInfo clickableParent(AccessibilityNodeInfo node) {
         AccessibilityNodeInfo cur = node;
         for (int i = 0; cur != null && i < 6; i++) {
@@ -131,5 +177,11 @@ public class Fold7AccessibilityService extends AccessibilityService {
     private String limit(String value) {
         String clean = value.replace("\n", " ").replace("\"", "'");
         return clean.length() > 48 ? clean.substring(0, 48) : clean;
+    }
+
+    private Bitmap scale(Bitmap bitmap, int maxWidth) {
+        if (bitmap.getWidth() <= maxWidth) return bitmap;
+        int height = Math.max(1, Math.round(bitmap.getHeight() * (maxWidth / (float) bitmap.getWidth())));
+        return Bitmap.createScaledBitmap(bitmap, maxWidth, height, true);
     }
 }

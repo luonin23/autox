@@ -30,6 +30,10 @@ import com.fold7.agent.core.ChatEngine;
 import com.fold7.agent.core.ConfigStore;
 import com.fold7.agent.core.LogStore;
 import com.fold7.agent.core.ModelClient;
+import com.fold7.agent.core.RuntimeAgent;
+import com.fold7.agent.core.TaskStore;
+import org.json.JSONObject;
+import java.util.ArrayList;
 import java.util.List;
 
 public class MainActivity extends Activity implements LogStore.Listener {
@@ -42,6 +46,7 @@ public class MainActivity extends Activity implements LogStore.Listener {
     private static final int SOFT = Color.rgb(223, 238, 231);
 
     private ConfigStore config;
+    private TaskStore tasks;
     private ChatEngine chat;
     private ActionExecutor executor;
     private FrameLayout content;
@@ -51,15 +56,19 @@ public class MainActivity extends Activity implements LogStore.Listener {
     private TextView logText;
     private LinearLayout chatMessages;
     private EditText chatInput;
+    private final List<String> chatTexts = new ArrayList<>();
+    private final List<Boolean> chatUsers = new ArrayList<>();
     private int tab = 0;
     private int settingsPage = 0;
+    private String editingTaskId = "";
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         config = new ConfigStore(this);
+        tasks = new TaskStore(this);
         executor = new ActionExecutor(this);
-        chat = new ChatEngine(new ModelClient(config));
+        chat = new ChatEngine(new ModelClient(config), tasks);
         LogStore.setListener(this);
         setContentView(shell());
         showTab(0);
@@ -189,7 +198,11 @@ public class MainActivity extends Activity implements LogStore.Listener {
         chatMessages = new LinearLayout(this);
         chatMessages.setOrientation(LinearLayout.VERTICAL);
         chatMessages.setPadding(0, dp(8), 0, dp(8));
-        addMessage(false, "输入一个目标，例如：打开设置然后返回桌面。模型会先回复确认拆解，确认后才会执行。");
+        if (chatTexts.isEmpty()) {
+            addMessage(false, "输入一个目标，例如：打开设置然后返回桌面。模型会先回复确认拆解，确认后才会执行。");
+        } else {
+            for (int i = 0; i < chatTexts.size(); i++) drawMessage(chatUsers.get(i), chatTexts.get(i));
+        }
         page.addView(chatMessages, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1));
         LinearLayout inputRow = new LinearLayout(this);
         inputRow.setOrientation(LinearLayout.HORIZONTAL);
@@ -218,14 +231,146 @@ public class MainActivity extends Activity implements LogStore.Listener {
     }
 
     private View manage() {
+        if (editingTaskId.length() > 0) return taskEditor();
         LinearLayout page = page();
-        page.addView(sectionTitle("脚本管理"));
-        page.addView(text("当前架构不再保存 AutoX 脚本。这里保存 AI 生成过的动作任务记录，后续可以扩展为可复用任务模板。", 13, MUTED, false));
-        List<String> history = LogStore.history();
-        if (history.isEmpty()) page.addView(empty("暂无任务记录"));
-        for (String item : history) page.addView(cardText(item));
+        page.addView(sectionTitle("任务计划"));
+        page.addView(text("Chat 生成的动作计划会保存在这里。你可以查看、编辑、执行或删除；执行时仍由运行时 AI 根据当前页面逐步判断。", 13, MUTED, false));
+        List<TaskStore.TaskRecord> list = tasks.tasks();
+        if (list.isEmpty()) page.addView(empty("暂无任务计划"));
+        for (TaskStore.TaskRecord item : list) page.addView(taskCard(item));
         addLogPanel(page);
         return scroll(page);
+    }
+
+    private View taskCard(final TaskStore.TaskRecord task) {
+        LinearLayout box = new LinearLayout(this);
+        box.setOrientation(LinearLayout.VERTICAL);
+        box.setPadding(dp(14), dp(12), dp(14), dp(12));
+        box.setBackground(round(PANEL, dp(8)));
+        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        lp.topMargin = dp(10);
+        box.setLayoutParams(lp);
+        box.addView(text(task.title + "\n" + task.status + "\n" + task.request, 13, INK, false));
+        LinearLayout row = new LinearLayout(this);
+        row.setOrientation(LinearLayout.HORIZONTAL);
+        Button view = ghostButton("查看");
+        view.setOnClickListener(new View.OnClickListener() {
+            public void onClick(View v) {
+                editingTaskId = task.id;
+                showTab(2);
+            }
+        });
+        Button run = primaryButton("执行");
+        run.setOnClickListener(new View.OnClickListener() {
+            public void onClick(View v) { executeTask(task.id); }
+        });
+        Button delete = ghostButton("删除");
+        delete.setOnClickListener(new View.OnClickListener() {
+            public void onClick(View v) {
+                tasks.delete(task.id);
+                Toast.makeText(MainActivity.this, "已删除任务", Toast.LENGTH_SHORT).show();
+                showTab(2);
+            }
+        });
+        row.addView(view, new LinearLayout.LayoutParams(0, dp(42), 1));
+        LinearLayout.LayoutParams bp = new LinearLayout.LayoutParams(0, dp(42), 1);
+        bp.leftMargin = dp(8);
+        row.addView(run, bp);
+        LinearLayout.LayoutParams dpv = new LinearLayout.LayoutParams(0, dp(42), 1);
+        dpv.leftMargin = dp(8);
+        row.addView(delete, dpv);
+        box.addView(row);
+        return box;
+    }
+
+    private View taskEditor() {
+        final TaskStore.TaskRecord task = tasks.find(editingTaskId);
+        if (task == null) {
+            editingTaskId = "";
+            return manage();
+        }
+        LinearLayout page = page();
+        page.addView(manageBackHeader("任务计划"));
+        final EditText title = input(task.title, "任务名称");
+        final EditText request = multilineInput(task.request, "用户原始需求", 90);
+        final EditText plan = multilineInput(task.planJson, "动作计划 JSON", 260);
+        page.addView(labeled("Title", title));
+        page.addView(labeled("Request", request));
+        page.addView(labeled("Plan JSON", plan));
+        if (task.transcript.length() > 0) page.addView(cardText("执行记录\n" + task.transcript));
+        LinearLayout row = new LinearLayout(this);
+        row.setOrientation(LinearLayout.HORIZONTAL);
+        Button save = primaryButton("保存");
+        save.setOnClickListener(new View.OnClickListener() {
+            public void onClick(View v) {
+                tasks.updatePlan(task.id, title.getText().toString(), request.getText().toString(), plan.getText().toString());
+                Toast.makeText(MainActivity.this, "已保存任务", Toast.LENGTH_SHORT).show();
+                editingTaskId = "";
+                showTab(2);
+            }
+        });
+        Button run = ghostButton("执行");
+        run.setOnClickListener(new View.OnClickListener() {
+            public void onClick(View v) {
+                tasks.updatePlan(task.id, title.getText().toString(), request.getText().toString(), plan.getText().toString());
+                editingTaskId = "";
+                executeTask(task.id);
+            }
+        });
+        row.addView(save, new LinearLayout.LayoutParams(0, dp(46), 1));
+        LinearLayout.LayoutParams rp = new LinearLayout.LayoutParams(0, dp(46), 1);
+        rp.leftMargin = dp(10);
+        row.addView(run, rp);
+        page.addView(row);
+        return scroll(page);
+    }
+
+    private View manageBackHeader(String label) {
+        LinearLayout row = new LinearLayout(this);
+        row.setOrientation(LinearLayout.HORIZONTAL);
+        row.setGravity(Gravity.CENTER_VERTICAL);
+        Button back = ghostButton("返回");
+        back.setOnClickListener(new View.OnClickListener() {
+            public void onClick(View v) {
+                editingTaskId = "";
+                showTab(2);
+            }
+        });
+        TextView title = text(label, 18, INK, true);
+        title.setPadding(dp(12), 0, 0, 0);
+        row.addView(back, new LinearLayout.LayoutParams(dp(78), dp(42)));
+        row.addView(title, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1));
+        return row;
+    }
+
+    private void executeTask(final String taskId) {
+        final TaskStore.TaskRecord task = tasks.find(taskId);
+        if (task == null) return;
+        Toast.makeText(this, "开始执行任务：" + task.title, Toast.LENGTH_SHORT).show();
+        new Thread(new Runnable() {
+            public void run() {
+                try {
+                    String result = new RuntimeAgent(new ModelClient(config), executor).execute(task.request, new JSONObject(task.planJson));
+                    tasks.updateExecution(task.id, "done", result);
+                    LogStore.task("Managed task executed: " + task.title);
+                    runOnUiThread(new Runnable() {
+                        public void run() {
+                            Toast.makeText(MainActivity.this, "任务执行完成", Toast.LENGTH_LONG).show();
+                            showTab(2);
+                        }
+                    });
+                } catch (final Exception e) {
+                    tasks.updateExecution(task.id, "failed", e.getMessage());
+                    LogStore.add("ERR", e.getMessage());
+                    runOnUiThread(new Runnable() {
+                        public void run() {
+                            Toast.makeText(MainActivity.this, "任务失败：" + e.getMessage(), Toast.LENGTH_LONG).show();
+                            showTab(2);
+                        }
+                    });
+                }
+            }
+        }).start();
     }
 
     private View docs() {
@@ -286,13 +431,13 @@ public class MainActivity extends Activity implements LogStore.Listener {
         page.addView(backHeader("新增自定义模型"));
 
         final EditText name = input("", "例如 DeepSeek");
-        final EditText provider = input(config.provider(), "provider: kimi/deepseek/local");
-        final EditText format = input(config.format(), "format: openai/anthropic");
-        final EditText baseUrl = input(config.baseUrl(), "base URL");
-        final EditText apiKey = input(config.apiKey(), "API Key");
+        final EditText provider = input("", "provider: kimi/deepseek/local");
+        final EditText format = input("", "format: openai/anthropic");
+        final EditText baseUrl = input("", "base URL");
+        final EditText apiKey = input("", "API Key");
         apiKey.setInputType(InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_VARIATION_PASSWORD);
-        final EditText model = input(config.model(), "model");
-        final EditText timeout = input(String.valueOf(config.actionTimeoutMs()), "action timeout ms");
+        final EditText model = input("", "model");
+        final EditText timeout = input("", "action timeout ms");
         page.addView(labeled("Name", name));
         page.addView(labeled("Provider", provider));
         page.addView(labeled("Format", format));
@@ -309,7 +454,7 @@ public class MainActivity extends Activity implements LogStore.Listener {
                 config.saveCustomModel(name.getText().toString(), provider.getText().toString(), format.getText().toString(),
                     baseUrl.getText().toString(), apiKey.getText().toString(), model.getText().toString());
                 config.saveActionTimeoutMs(Math.round(num(timeout, config.actionTimeoutMs())));
-                chat = new ChatEngine(new ModelClient(config));
+                chat = new ChatEngine(new ModelClient(config), tasks);
                 LogStore.add("CFG", "Model saved and activated: " + config.activeModelName());
                 Toast.makeText(MainActivity.this, "已启用模型：" + config.activeModelName(), Toast.LENGTH_SHORT).show();
                 settingsPage = 1;
@@ -386,7 +531,7 @@ public class MainActivity extends Activity implements LogStore.Listener {
         view.setOnClickListener(new View.OnClickListener() {
             public void onClick(View v) {
                 if (config.activateModel(profile.id)) {
-                    chat = new ChatEngine(new ModelClient(config));
+                    chat = new ChatEngine(new ModelClient(config), tasks);
                     LogStore.add("CFG", "Activated model: " + config.activeModelName());
                     Toast.makeText(MainActivity.this, "已启用模型：" + config.activeModelName(), Toast.LENGTH_SHORT).show();
                     settingsPage = 1;
@@ -479,7 +624,7 @@ public class MainActivity extends Activity implements LogStore.Listener {
         boolean ok = config.importAutoXConfig();
         LogStore.add(ok ? "CFG" : "CFG", ok ? "Imported AutoX config" : "No existing AutoX config found");
         if (ok) {
-            chat = new ChatEngine(new ModelClient(config));
+            chat = new ChatEngine(new ModelClient(config), tasks);
             showTab(tab);
         }
     }
@@ -569,6 +714,12 @@ public class MainActivity extends Activity implements LogStore.Listener {
     }
 
     private void addMessage(boolean user, String body) {
+        chatUsers.add(user);
+        chatTexts.add(body);
+        drawMessage(user, body);
+    }
+
+    private void drawMessage(boolean user, String body) {
         if (chatMessages == null) return;
         TextView bubble = text(body, 14, user ? Color.WHITE : INK, false);
         bubble.setPadding(dp(12), dp(10), dp(12), dp(10));
@@ -584,6 +735,7 @@ public class MainActivity extends Activity implements LogStore.Listener {
     private void replaceLastMessage(String body) {
         int count = chatMessages.getChildCount();
         if (count == 0) return;
+        if (!chatTexts.isEmpty()) chatTexts.set(chatTexts.size() - 1, body);
         TextView view = (TextView) chatMessages.getChildAt(count - 1);
         view.setText(body);
     }
@@ -652,7 +804,8 @@ public class MainActivity extends Activity implements LogStore.Listener {
         box.setOrientation(LinearLayout.VERTICAL);
         TextView l = text(label, 12, MUTED, false);
         box.addView(l);
-        box.addView(input, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(48)));
+        int height = input.getMaxLines() > 1 ? ViewGroup.LayoutParams.WRAP_CONTENT : dp(48);
+        box.addView(input, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, height));
         LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
         lp.bottomMargin = dp(10);
         box.setLayoutParams(lp);
@@ -668,6 +821,17 @@ public class MainActivity extends Activity implements LogStore.Listener {
         edit.setTextSize(14);
         edit.setPadding(dp(12), 0, dp(12), 0);
         edit.setBackground(round(PANEL, dp(8)));
+        return edit;
+    }
+
+    private EditText multilineInput(String value, String hint, int minHeightDp) {
+        EditText edit = input(value, hint);
+        edit.setSingleLine(false);
+        edit.setMinLines(3);
+        edit.setMaxLines(12);
+        edit.setGravity(Gravity.TOP);
+        edit.setMinHeight(dp(minHeightDp));
+        edit.setInputType(InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_FLAG_MULTI_LINE);
         return edit;
     }
 

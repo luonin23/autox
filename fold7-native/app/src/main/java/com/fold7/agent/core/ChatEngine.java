@@ -5,13 +5,16 @@ import org.json.JSONObject;
 
 public class ChatEngine {
     private final ModelClient model;
+    private final TaskStore tasks;
     private String pendingRequest = "";
     private String pendingConfirmation = "";
     private JSONObject pendingPlan = null;
     private String pendingPlanRequest = "";
+    private String pendingTaskId = "";
 
-    public ChatEngine(ModelClient model) {
+    public ChatEngine(ModelClient model, TaskStore tasks) {
         this.model = model;
+        this.tasks = tasks;
     }
 
     public boolean waitingConfirmation() {
@@ -29,6 +32,7 @@ public class ChatEngine {
         if (hasPendingPlan()) {
             pendingPlan = null;
             pendingPlanRequest = "";
+            pendingTaskId = "";
         }
         if (waitingConfirmation()) {
             if (isConfirm(input)) {
@@ -38,9 +42,10 @@ public class ChatEngine {
                     JSONObject json = extractJson(plan);
                     pendingPlan = json;
                     pendingPlanRequest = request;
+                    pendingTaskId = tasks.savePlan(request, json);
                     pendingRequest = "";
                     pendingConfirmation = "";
-                    return "动作计划已生成，尚未执行。\n\n" + summarize(json) + "\n请点击“执行”或输入“执行”后，我才会开始运行。";
+                    return "动作计划已生成，尚未执行，已保存到 Manage。\n\n" + summarize(json) + "\n请点击“执行”或输入“执行”后，我才会开始运行。";
                 } catch (Exception e) {
                     reset();
                     throw e;
@@ -63,12 +68,16 @@ public class ChatEngine {
         try {
             String result = new RuntimeAgent(model, executor).execute(request, plan);
             LogStore.task("AI runtime executed: " + request);
+            if (pendingTaskId.length() > 0) tasks.updateExecution(pendingTaskId, "done", result);
             pendingPlan = null;
             pendingPlanRequest = "";
+            pendingTaskId = "";
             return "已执行动作计划。\n\n" + summarize(plan) + "\n\n执行结果：\n" + result;
         } catch (Exception e) {
+            if (pendingTaskId.length() > 0) tasks.updateExecution(pendingTaskId, "failed", e.getMessage());
             pendingPlan = null;
             pendingPlanRequest = "";
+            pendingTaskId = "";
             throw e;
         }
     }
@@ -100,6 +109,7 @@ public class ChatEngine {
         pendingConfirmation = "";
         pendingPlan = null;
         pendingPlanRequest = "";
+        pendingTaskId = "";
     }
 
     private boolean isConfirm(String input) {

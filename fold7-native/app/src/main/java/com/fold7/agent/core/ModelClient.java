@@ -21,6 +21,14 @@ public class ModelClient {
     }
 
     public String complete(String system, String user) throws Exception {
+        return complete(system, user, "");
+    }
+
+    public String completeWithImage(String system, String user, String imageBase64) throws Exception {
+        return complete(system, user, imageBase64);
+    }
+
+    private String complete(String system, String user, String imageBase64) throws Exception {
         String url = endpoint();
         HttpURLConnection conn = (HttpURLConnection) new URL(url).openConnection();
         conn.setConnectTimeout(30000);
@@ -34,7 +42,7 @@ public class ModelClient {
         } else {
             conn.setRequestProperty("Authorization", "Bearer " + config.apiKey());
         }
-        byte[] payload = body(system, user).toString().getBytes("UTF-8");
+        byte[] payload = body(system, user, imageBase64).toString().getBytes("UTF-8");
         OutputStream output = conn.getOutputStream();
         output.write(payload);
         output.close();
@@ -60,7 +68,7 @@ public class ModelClient {
         return base + "/v1/chat/completions";
     }
 
-    private JSONObject body(String system, String user) throws Exception {
+    private JSONObject body(String system, String user, String imageBase64) throws Exception {
         JSONObject body = new JSONObject();
         body.put("model", config.model());
         body.put("temperature", 0.2);
@@ -68,12 +76,33 @@ public class ModelClient {
             body.put("max_tokens", 1800);
             body.put("system", system);
             JSONArray messages = new JSONArray();
-            messages.put(new JSONObject().put("role", "user").put("content", user));
+            if (imageBase64 != null && imageBase64.length() > 0) {
+                JSONArray content = new JSONArray();
+                content.put(new JSONObject().put("type", "text").put("text", user));
+                content.put(new JSONObject()
+                    .put("type", "image")
+                    .put("source", new JSONObject()
+                        .put("type", "base64")
+                        .put("media_type", "image/jpeg")
+                        .put("data", imageBase64)));
+                messages.put(new JSONObject().put("role", "user").put("content", content));
+            } else {
+                messages.put(new JSONObject().put("role", "user").put("content", user));
+            }
             body.put("messages", messages);
         } else {
             JSONArray messages = new JSONArray();
             messages.put(new JSONObject().put("role", "system").put("content", system));
-            messages.put(new JSONObject().put("role", "user").put("content", user));
+            if (imageBase64 != null && imageBase64.length() > 0) {
+                JSONArray content = new JSONArray();
+                content.put(new JSONObject().put("type", "text").put("text", user));
+                content.put(new JSONObject()
+                    .put("type", "image_url")
+                    .put("image_url", new JSONObject().put("url", "data:image/jpeg;base64," + imageBase64)));
+                messages.put(new JSONObject().put("role", "user").put("content", content));
+            } else {
+                messages.put(new JSONObject().put("role", "user").put("content", user));
+            }
             body.put("messages", messages);
         }
         return body;
