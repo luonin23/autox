@@ -8,6 +8,7 @@ import android.os.Build;
 import android.os.Bundle;
 import android.util.Base64;
 import android.util.DisplayMetrics;
+import android.view.WindowManager;
 import android.view.accessibility.AccessibilityEvent;
 import android.view.accessibility.AccessibilityNodeInfo;
 import com.fold7.agent.core.LogStore;
@@ -95,7 +96,7 @@ public class Fold7AccessibilityService extends AccessibilityService {
         AccessibilityNodeInfo root = getRootInActiveWindow();
         if (root == null) return "accessibility_root: unavailable";
         StringBuilder out = new StringBuilder();
-        DisplayMetrics metrics = getResources().getDisplayMetrics();
+        DisplayMetrics metrics = realMetrics();
         out.append("display=").append(metrics.widthPixels).append("x").append(metrics.heightPixels).append("\n");
         if (lastScreenshotWidth > 0 && lastScreenshotHeight > 0) {
             out.append("screenshot=").append(lastScreenshotWidth).append("x").append(lastScreenshotHeight).append("\n");
@@ -193,6 +194,14 @@ public class Fold7AccessibilityService extends AccessibilityService {
     private String limit(String value) {
         String clean = value.replace("\n", " ").replace("\"", "'");
         return clean.length() > 48 ? clean.substring(0, 48) : clean;
+    }
+
+    private DisplayMetrics realMetrics() {
+        DisplayMetrics metrics = new DisplayMetrics();
+        WindowManager manager = (WindowManager) getSystemService(WINDOW_SERVICE);
+        if (manager != null) manager.getDefaultDisplay().getRealMetrics(metrics);
+        if (metrics.widthPixels <= 0 || metrics.heightPixels <= 0) return getResources().getDisplayMetrics();
+        return metrics;
     }
 
 }

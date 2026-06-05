@@ -57,6 +57,7 @@ public class MainActivity extends Activity implements LogStore.Listener {
     private TextView title;
     private TextView subtitle;
     private TextView logText;
+    private ScrollView chatScroll;
     private LinearLayout chatMessages;
     private EditText chatInput;
     private final List<String> chatTexts = new ArrayList<>();
@@ -133,8 +134,7 @@ public class MainActivity extends Activity implements LogStore.Listener {
         addTab("Home", 0, 0);
         addTab("Chat", 1, 1);
         addTab("Manage", 2, 2);
-        addTab("Docs", 3, 3);
-        addTab("Settings", 4, 4);
+        addTab("Settings", 4, 3);
         return root;
     }
 
@@ -150,7 +150,7 @@ public class MainActivity extends Activity implements LogStore.Listener {
         item.addView(tv);
         item.setOnClickListener(new View.OnClickListener() {
             public void onClick(View v) {
-                if (index == 4) settingsPage = 0;
+                if (index == 3) settingsPage = 0;
                 showTab(index);
             }
         });
@@ -166,8 +166,7 @@ public class MainActivity extends Activity implements LogStore.Listener {
         if (index == 0) content.addView(home());
         if (index == 1) content.addView(chatView());
         if (index == 2) content.addView(manage());
-        if (index == 3) content.addView(docs());
-        if (index == 4) content.addView(settingsView());
+        if (index == 3) content.addView(settingsView());
     }
 
     private View home() {
@@ -186,10 +185,15 @@ public class MainActivity extends Activity implements LogStore.Listener {
         chatBtn.setOnClickListener(new View.OnClickListener() { public void onClick(View v) { showTab(1); } });
         Button testBtn = ghostButton("本机动作测试");
         testBtn.setOnClickListener(new View.OnClickListener() { public void onClick(View v) { runLocalDemo(); } });
+        Button stopBtn = ghostButton("停止运行");
+        stopBtn.setOnClickListener(new View.OnClickListener() { public void onClick(View v) { stopRuntime(); } });
         actions.addView(chatBtn, new LinearLayout.LayoutParams(0, dp(46), 1));
         LinearLayout.LayoutParams gp = new LinearLayout.LayoutParams(0, dp(46), 1);
         gp.leftMargin = dp(10);
         actions.addView(testBtn, gp);
+        LinearLayout.LayoutParams stp = new LinearLayout.LayoutParams(0, dp(46), 1);
+        stp.leftMargin = dp(10);
+        actions.addView(stopBtn, stp);
         page.addView(actions);
         addLogPanel(page);
         return scroll(page);
@@ -201,6 +205,8 @@ public class MainActivity extends Activity implements LogStore.Listener {
         TextView hint = text("先确认用户意图，再生成动作计划，最后由原生执行器运行。", 13, MUTED, false);
         page.addView(hint);
         page.addView(taskModeSelector());
+        chatScroll = new ScrollView(this);
+        chatScroll.setFillViewport(false);
         chatMessages = new LinearLayout(this);
         chatMessages.setOrientation(LinearLayout.VERTICAL);
         chatMessages.setPadding(0, dp(8), 0, dp(8));
@@ -209,7 +215,8 @@ public class MainActivity extends Activity implements LogStore.Listener {
         } else {
             for (int i = 0; i < chatTexts.size(); i++) drawMessage(chatUsers.get(i), chatTexts.get(i));
         }
-        page.addView(chatMessages, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1));
+        chatScroll.addView(chatMessages, new ScrollView.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+        page.addView(chatScroll, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1));
         LinearLayout inputRow = new LinearLayout(this);
         inputRow.setOrientation(LinearLayout.HORIZONTAL);
         chatInput = new EditText(this);
@@ -223,13 +230,18 @@ public class MainActivity extends Activity implements LogStore.Listener {
         chatInput.setPadding(dp(12), 0, dp(12), 0);
         Button send = primaryButton("发送");
         send.setOnClickListener(new View.OnClickListener() { public void onClick(View v) { sendChat(); } });
-        Button execute = ghostButton("执行");
-        execute.setOnClickListener(new View.OnClickListener() { public void onClick(View v) { executePendingPlan(); } });
+        Button execute = ghostButton(TaskRuntimeService.isAnyRunning() ? "停止" : "执行");
+        execute.setOnClickListener(new View.OnClickListener() {
+            public void onClick(View v) {
+                if (TaskRuntimeService.isAnyRunning()) stopRuntime();
+                else executePendingPlan();
+            }
+        });
         inputRow.addView(chatInput, new LinearLayout.LayoutParams(0, dp(52), 1));
-        LinearLayout.LayoutParams sp = new LinearLayout.LayoutParams(dp(72), dp(52));
+        LinearLayout.LayoutParams sp = new LinearLayout.LayoutParams(dp(64), dp(52));
         sp.leftMargin = dp(8);
         inputRow.addView(send, sp);
-        LinearLayout.LayoutParams ep = new LinearLayout.LayoutParams(dp(72), dp(52));
+        LinearLayout.LayoutParams ep = new LinearLayout.LayoutParams(dp(64), dp(52));
         ep.leftMargin = dp(8);
         inputRow.addView(execute, ep);
         page.addView(inputRow);
@@ -284,8 +296,9 @@ public class MainActivity extends Activity implements LogStore.Listener {
         LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
         lp.topMargin = dp(10);
         box.setLayoutParams(lp);
-        box.addView(text(task.title + "\n" + task.status + "\n" + task.request, 13, INK, false));
-        box.addView(text(task.mode + scheduleSummary(task), 12, MUTED, false));
+        boolean running = isTaskRunning(task);
+        box.addView(text(task.title + "\n状态：" + taskStatusLabel(task, running) + "\n" + task.request, 13, INK, false));
+        box.addView(text("模式：" + task.mode + scheduleSummary(task), 12, MUTED, false));
         LinearLayout row = new LinearLayout(this);
         row.setOrientation(LinearLayout.HORIZONTAL);
         Button view = ghostButton("查看");
@@ -295,9 +308,12 @@ public class MainActivity extends Activity implements LogStore.Listener {
                 showTab(2);
             }
         });
-        Button run = primaryButton("执行");
+        Button run = running ? primaryButton("停止") : primaryButton("执行");
         run.setOnClickListener(new View.OnClickListener() {
-            public void onClick(View v) { executeTask(task.id); }
+            public void onClick(View v) {
+                if (isTaskRunning(task)) stopRuntime(task.id);
+                else executeTask(task.id);
+            }
         });
         Button delete = ghostButton("删除");
         delete.setOnClickListener(new View.OnClickListener() {
@@ -317,6 +333,19 @@ public class MainActivity extends Activity implements LogStore.Listener {
         row.addView(delete, dpv);
         box.addView(row);
         return box;
+    }
+
+    private boolean isTaskRunning(TaskStore.TaskRecord task) {
+        return task != null && ("running".equals(task.status) || TaskRuntimeService.isRunning(task.id));
+    }
+
+    private String taskStatusLabel(TaskStore.TaskRecord task, boolean running) {
+        if (running) return "运行中";
+        if ("done".equals(task.status)) return "已完成";
+        if ("failed".equals(task.status)) return "失败";
+        if ("stopped".equals(task.status)) return "已停止";
+        if ("draft".equals(task.status)) return "待执行";
+        return task.status == null || task.status.length() == 0 ? "待执行" : task.status;
     }
 
     private View taskEditor() {
@@ -411,14 +440,19 @@ public class MainActivity extends Activity implements LogStore.Listener {
         showTab(2);
     }
 
-    private View docs() {
-        LinearLayout page = page();
-        page.addView(sectionTitle("框架说明"));
-        page.addView(cardText("架构：这是独立原生 APK，不依赖 AutoX runtime。手机重启后只要 APK 未卸载，就能直接启动；执行跨应用动作需要重新保持无障碍权限开启。"));
-        page.addView(cardText("模型：Settings 中配置 Kimi、DeepSeek 或兼容 OpenAI 的本地服务。Chat 中先做意图确认，用户确认后才生成动作 JSON。"));
-        page.addView(cardText("插件：旧文档里的插件指 AutoX 脚本扩展能力。新架构里它会演进成动作模块，例如微信、飞书、系统设置等应用的专用执行器。它的作用是把通用模型输出约束为可靠、可测试、可复用的手机操作能力。"));
-        page.addView(cardText("流程：理解应用和手机环境 -> 确认用户意图 -> 生成动作计划 -> 执行并监控日志 -> 出错后回到对话上下文修正。"));
-        return scroll(page);
+    private void stopRuntime() {
+        TaskRuntimeService.requestStop();
+        Toast.makeText(this, "已请求停止当前任务", Toast.LENGTH_SHORT).show();
+        LogStore.add("RUN", "user requested stop from UI");
+        showTab(tab);
+    }
+
+    private void stopRuntime(String taskId) {
+        TaskRuntimeService.requestStop();
+        tasks.updateExecution(taskId, "stopped", "用户已请求停止任务。");
+        Toast.makeText(this, "已请求停止任务", Toast.LENGTH_SHORT).show();
+        LogStore.add("RUN", "user requested stop task: " + taskId);
+        showTab(2);
     }
 
     private View settingsView() {
@@ -434,13 +468,13 @@ public class MainActivity extends Activity implements LogStore.Listener {
         page.addView(settingsOption("模型配置", "管理 Kimi、DeepSeek 和自定义模型，点击列表项即可启用。", new View.OnClickListener() {
             public void onClick(View v) {
                 settingsPage = 1;
-                showTab(4);
+                showTab(3);
             }
         }));
         page.addView(settingsOption("坐标校准", "配置坐标偏移和缩放，用于没有稳定文字节点的页面点击。", new View.OnClickListener() {
             public void onClick(View v) {
                 settingsPage = 2;
-                showTab(4);
+                showTab(3);
             }
         }));
         addLogPanel(page);
@@ -458,7 +492,7 @@ public class MainActivity extends Activity implements LogStore.Listener {
             public void onClick(View v) {
                 editingModelId = "";
                 settingsPage = 3;
-                showTab(4);
+                showTab(3);
             }
         }));
         addLogPanel(page);
@@ -502,7 +536,7 @@ public class MainActivity extends Activity implements LogStore.Listener {
                 Toast.makeText(MainActivity.this, "已启用模型：" + config.activeModelName(), Toast.LENGTH_SHORT).show();
                 editingModelId = "";
                 settingsPage = 1;
-                showTab(4);
+                showTab(3);
             }
         });
         Button test = ghostButton("测试连接");
@@ -541,7 +575,7 @@ public class MainActivity extends Activity implements LogStore.Listener {
             public void onClick(View v) {
                 editingModelId = "";
                 settingsPage = settingsPage == 3 ? 1 : 0;
-                showTab(4);
+                showTab(3);
             }
         });
         TextView title = text(label, 18, INK, true);
@@ -586,7 +620,7 @@ public class MainActivity extends Activity implements LogStore.Listener {
             public void onClick(View v) {
                 editingModelId = profile.id;
                 settingsPage = 3;
-                showTab(4);
+                showTab(3);
             }
         });
         Button activate = profile.id.equals(config.activeModelId()) ? ghostButton("已启用") : primaryButton("启用");
@@ -597,7 +631,7 @@ public class MainActivity extends Activity implements LogStore.Listener {
                     LogStore.add("CFG", "Activated model: " + config.activeModelName());
                     Toast.makeText(MainActivity.this, "已启用模型：" + config.activeModelName(), Toast.LENGTH_SHORT).show();
                     settingsPage = 1;
-                    showTab(4);
+                    showTab(3);
                 }
             }
         });
@@ -667,6 +701,7 @@ public class MainActivity extends Activity implements LogStore.Listener {
         TaskRuntimeService.start(this, task.id, false);
         chat.clearPendingPlan();
         addMessage(false, "已启动前台运行服务。你可以到 Manage 查看任务状态和运行日志。");
+        showTab(1);
     }
 
     private String localFallback(String input) throws Exception {
@@ -788,7 +823,7 @@ public class MainActivity extends Activity implements LogStore.Listener {
             public void onClick(View v) {
                 config.saveCalibration(num(offsetX, 0), num(offsetY, 0), num(scaleX, 1), num(scaleY, 1));
                 LogStore.add("CAL", "Calibration saved");
-                showTab(4);
+                showTab(3);
             }
         });
         Button reset = ghostButton("重置");
@@ -796,7 +831,7 @@ public class MainActivity extends Activity implements LogStore.Listener {
             public void onClick(View v) {
                 config.saveCalibration(0, 0, 1, 1);
                 LogStore.add("CAL", "Calibration reset");
-                showTab(4);
+                showTab(3);
             }
         });
         buttons.addView(save, new LinearLayout.LayoutParams(0, dp(46), 1));
@@ -832,6 +867,7 @@ public class MainActivity extends Activity implements LogStore.Listener {
         lp.leftMargin = user ? dp(40) : 0;
         lp.rightMargin = user ? 0 : dp(40);
         chatMessages.addView(bubble, lp);
+        scrollChatToBottom();
     }
 
     private void replaceLastMessage(String body) {
@@ -840,6 +876,16 @@ public class MainActivity extends Activity implements LogStore.Listener {
         if (!chatTexts.isEmpty()) chatTexts.set(chatTexts.size() - 1, body);
         TextView view = (TextView) chatMessages.getChildAt(count - 1);
         view.setText(body);
+        scrollChatToBottom();
+    }
+
+    private void scrollChatToBottom() {
+        if (chatScroll == null) return;
+        chatScroll.post(new Runnable() {
+            public void run() {
+                chatScroll.fullScroll(View.FOCUS_DOWN);
+            }
+        });
     }
 
     private void addLogPanel(LinearLayout page) {

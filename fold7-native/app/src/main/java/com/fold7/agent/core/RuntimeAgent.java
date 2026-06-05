@@ -1,18 +1,25 @@
 package com.fold7.agent.core;
 
+import android.content.Context;
 import com.fold7.agent.Fold7AccessibilityService;
 import org.json.JSONObject;
 
 public class RuntimeAgent {
+    private final Context context;
     private final ModelClient model;
     private final ActionExecutor executor;
     private final ConfigStore config;
 
     public RuntimeAgent(ModelClient model, ActionExecutor executor) {
-        this(model, executor, null);
+        this(null, model, executor, null);
     }
 
     public RuntimeAgent(ModelClient model, ActionExecutor executor, ConfigStore config) {
+        this(null, model, executor, config);
+    }
+
+    public RuntimeAgent(Context context, ModelClient model, ActionExecutor executor, ConfigStore config) {
+        this.context = context == null ? null : context.getApplicationContext();
         this.model = model;
         this.executor = executor;
         this.config = config;
@@ -23,7 +30,12 @@ public class RuntimeAgent {
         String last = "none";
         int failures = 0;
         int max = config == null ? 24 : config.maxSteps();
+        if (context != null && config != null) {
+            String calibration = RuntimeCalibrator.calibrate(context, model, executor, config);
+            transcript.append("0. ").append(calibration).append("\n");
+        }
         for (int i = 0; i < max; i++) {
+            RuntimeControl.throwIfStopped();
             String observation = observe();
             String image = screenshot();
             String prompt = userPrompt(request, plan, observation, transcript.toString(), last, image.length() > 0);
@@ -52,6 +64,7 @@ public class RuntimeAgent {
             JSONObject action = decision.optJSONObject("action");
             if (action == null) throw new Exception("运行时 AI 未返回 action");
             try {
+                RuntimeControl.throwIfStopped();
                 String result = executor.executeOne(action);
                 failures = 0;
                 last = action.toString();

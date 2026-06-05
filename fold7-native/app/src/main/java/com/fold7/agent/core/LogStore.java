@@ -1,6 +1,7 @@
 package com.fold7.agent.core;
 
 import android.text.format.DateFormat;
+import android.util.Log;
 import java.util.ArrayList;
 import java.util.Date;
 import java.util.List;
@@ -18,6 +19,7 @@ public class LogStore {
     public static void add(String level, String message) {
         String time = DateFormat.format("HH:mm:ss", new Date()).toString();
         logs.add(0, time + "  " + level + "  " + message);
+        Log.d("Fold7Agent", level + "  " + message);
         while (logs.size() > 120) logs.remove(logs.size() - 1);
         if (listener != null) listener.onLogChanged();
     }
@@ -28,4 +30,3 @@ public class LogStore {
         add("TASK", message);
     }
 }
-

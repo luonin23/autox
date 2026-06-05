@@ -6,6 +6,7 @@ import android.content.pm.ApplicationInfo;
 import android.content.pm.PackageManager;
 import android.provider.Settings;
 import android.util.DisplayMetrics;
+import android.view.WindowManager;
 import com.fold7.agent.Fold7AccessibilityService;
 import org.json.JSONArray;
 import org.json.JSONObject;
@@ -32,6 +33,7 @@ public class ActionExecutor {
     }
 
     public String executeOne(JSONObject action) throws Exception {
+        RuntimeControl.throwIfStopped();
         String name = actionName(action);
         LogStore.add("RUN", name + " " + describe(action));
         boolean ok = run(action, name);
@@ -39,7 +41,16 @@ public class ActionExecutor {
         return name + " ok";
     }
 
+    public boolean tapCalibration(double inputX, double inputY) throws Exception {
+        Fold7AccessibilityService svc = Fold7AccessibilityService.instance();
+        if (svc == null) throw new Exception("无障碍服务未开启，无法点击坐标");
+        Point point = mapPoint(svc, inputX, inputY, false);
+        LogStore.add("CAL", "tap calibration raw(" + round(inputX) + "," + round(inputY) + ") mapped(" + round(point.screenX) + "," + round(point.screenY) + ") actual(" + round(point.x) + "," + round(point.y) + ") image(" + point.imageWidth + "x" + point.imageHeight + ") screen(" + point.screenWidth + "x" + point.screenHeight + ")");
+        return svc.tap(point.x, point.y);
+    }
+
     private boolean run(JSONObject action, String name) throws Exception {
+        RuntimeControl.throwIfStopped();
         if ("open_settings".equals(name)) {
             Intent intent = new Intent(Settings.ACTION_SETTINGS);
             intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
@@ -61,7 +72,7 @@ public class ActionExecutor {
             return svc.back();
         }
         if ("wait".equals(name)) {
-            Thread.sleep(Math.max(100, Math.min(10000, action.optInt("ms", 800))));
+            sleepInterruptibly(Math.max(100, Math.min(10000, action.optInt("ms", 800))));
             return true;
         }
         if ("input_text".equals(name)) {
@@ -80,24 +91,11 @@ public class ActionExecutor {
         if ("tap_xy".equals(name)) {
             Fold7AccessibilityService svc = Fold7AccessibilityService.instance();
             if (svc == null) throw new Exception("无障碍服务未开启，无法点击坐标");
-            DisplayMetrics metrics = context.getResources().getDisplayMetrics();
-            int imageWidth = svc.screenshotWidth() > 0 ? svc.screenshotWidth() : metrics.widthPixels;
-            int imageHeight = svc.screenshotHeight() > 0 ? svc.screenshotHeight() : metrics.heightPixels;
             double inputX = action.optDouble("x", 0);
             double inputY = action.optDouble("y", 0);
-            double screenX;
-            double screenY;
-            if (inputX > 0 && inputX <= 1 && inputY > 0 && inputY <= 1) {
-                screenX = inputX * metrics.widthPixels;
-                screenY = inputY * metrics.heightPixels;
-            } else {
-                screenX = imageWidth > 0 ? inputX * metrics.widthPixels / imageWidth : inputX;
-                screenY = imageHeight > 0 ? inputY * metrics.heightPixels / imageHeight : inputY;
-            }
-            float x = (float) (screenX * config.scaleX() + config.offsetX());
-            float y = (float) (screenY * config.scaleY() + config.offsetY());
-            LogStore.add("RUN", "tap_xy raw(" + round(inputX) + "," + round(inputY) + ") mapped(" + round(screenX) + "," + round(screenY) + ") actual(" + round(x) + "," + round(y) + ") image(" + imageWidth + "x" + imageHeight + ") screen(" + metrics.widthPixels + "x" + metrics.heightPixels + ") cal(sx=" + compact(config.scaleX()) + ",sy=" + compact(config.scaleY()) + ",ox=" + round(config.offsetX()) + ",oy=" + round(config.offsetY()) + ")");
-            return svc.tap(x, y);
+            Point point = mapPoint(svc, inputX, inputY, true);
+            LogStore.add("RUN", "tap_xy raw(" + round(inputX) + "," + round(inputY) + ") mapped(" + round(point.screenX) + "," + round(point.screenY) + ") actual(" + round(point.x) + "," + round(point.y) + ") image(" + point.imageWidth + "x" + point.imageHeight + ") screen(" + point.screenWidth + "x" + point.screenHeight + ") cal(sx=" + compact(config.scaleX()) + ",sy=" + compact(config.scaleY()) + ",ox=" + round(config.offsetX()) + ",oy=" + round(config.offsetY()) + ")");
+            return svc.tap(point.x, point.y);
         }
         if ("open_app".equals(name)) {
             String target = first(action, "package", "packageName", "pkg", "text", "appName", "app", "label");
@@ -114,10 +112,49 @@ public class ActionExecutor {
     private boolean waitFor(Check check, int timeoutMs) throws Exception {
         long end = System.currentTimeMillis() + timeoutMs;
         while (System.currentTimeMillis() < end) {
+            RuntimeControl.throwIfStopped();
             if (check.ok()) return true;
             Thread.sleep(250);
         }
         return false;
+    }
+
+    private void sleepInterruptibly(int ms) throws Exception {
+        long end = System.currentTimeMillis() + ms;
+        while (System.currentTimeMillis() < end) {
+            RuntimeControl.throwIfStopped();
+            Thread.sleep(Math.min(250, Math.max(1, end - System.currentTimeMillis())));
+        }
+    }
+
+    private Point mapPoint(Fold7AccessibilityService svc, double inputX, double inputY, boolean applyCalibration) {
+        DisplayMetrics metrics = realMetrics();
+        int imageWidth = svc.screenshotWidth() > 0 ? svc.screenshotWidth() : metrics.widthPixels;
+        int imageHeight = svc.screenshotHeight() > 0 ? svc.screenshotHeight() : metrics.heightPixels;
+        double screenX;
+        double screenY;
+        if (inputX > 0 && inputX <= 1 && inputY > 0 && inputY <= 1) {
+            screenX = inputX * metrics.widthPixels;
+            screenY = inputY * metrics.heightPixels;
+        } else {
+            screenX = imageWidth > 0 ? inputX * metrics.widthPixels / imageWidth : inputX;
+            screenY = imageHeight > 0 ? inputY * metrics.heightPixels / imageHeight : inputY;
+        }
+        float x = (float) screenX;
+        float y = (float) screenY;
+        if (applyCalibration) {
+            x = (float) (screenX * config.scaleX() + config.offsetX());
+            y = (float) (screenY * config.scaleY() + config.offsetY());
+        }
+        return new Point(inputX, inputY, screenX, screenY, x, y, imageWidth, imageHeight, metrics.widthPixels, metrics.heightPixels);
+    }
+
+    private DisplayMetrics realMetrics() {
+        DisplayMetrics metrics = new DisplayMetrics();
+        WindowManager manager = (WindowManager) context.getSystemService(Context.WINDOW_SERVICE);
+        if (manager != null) manager.getDefaultDisplay().getRealMetrics(metrics);
+        if (metrics.widthPixels <= 0 || metrics.heightPixels <= 0) return context.getResources().getDisplayMetrics();
+        return metrics;
     }
 
     private String describe(JSONObject action) {
@@ -208,5 +245,31 @@ public class ActionExecutor {
 
     private interface Check {
         boolean ok() throws Exception;
+    }
+
+    private static class Point {
+        final double inputX;
+        final double inputY;
+        final double screenX;
+        final double screenY;
+        final float x;
+        final float y;
+        final int imageWidth;
+        final int imageHeight;
+        final int screenWidth;
+        final int screenHeight;
+
+        Point(double inputX, double inputY, double screenX, double screenY, float x, float y, int imageWidth, int imageHeight, int screenWidth, int screenHeight) {
+            this.inputX = inputX;
+            this.inputY = inputY;
+            this.screenX = screenX;
+            this.screenY = screenY;
+            this.x = x;
+            this.y = y;
+            this.imageWidth = imageWidth;
+            this.imageHeight = imageHeight;
+            this.screenWidth = screenWidth;
+            this.screenHeight = screenHeight;
+        }
     }
 }
