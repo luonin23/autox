@@ -22,6 +22,7 @@ public class RuntimeAgent {
             String image = screenshot();
             String prompt = userPrompt(request, plan, observation, transcript.toString(), last, image.length() > 0);
             String decisionText;
+            LogStore.add("AI", "runtime step " + (i + 1) + " observe " + (image.length() > 0 ? "vision" : "text"));
             if (image.length() > 0) {
                 try {
                     decisionText = model.completeWithImage(systemPrompt(), prompt, image);
