@@ -16,8 +16,13 @@ public class TaskStore {
     }
 
     public String savePlan(String request, JSONObject plan) {
+        return savePlan(request, plan, "normal");
+    }
+
+    public String savePlan(String request, JSONObject plan, String mode) {
         String id = "task-" + System.currentTimeMillis();
-        TaskRecord record = new TaskRecord(id, title(request), request, plan.toString(), "draft", "", System.currentTimeMillis());
+        TaskRecord record = new TaskRecord(id, title(request), request, plan.toString(), "draft", "", System.currentTimeMillis(),
+            mode, 0, 0, 1, 0);
         ArrayList<TaskRecord> list = new ArrayList<>(tasks());
         list.add(0, record);
         saveAll(list);
@@ -28,7 +33,7 @@ public class TaskStore {
         ArrayList<TaskRecord> list = new ArrayList<>(tasks());
         for (int i = 0; i < list.size(); i++) {
             TaskRecord item = list.get(i);
-            if (item.id.equals(id)) list.set(i, new TaskRecord(item.id, item.title, item.request, item.planJson, status, transcript, System.currentTimeMillis()));
+            if (item.id.equals(id)) list.set(i, item.withExecution(status, transcript));
         }
         saveAll(list);
     }
@@ -37,9 +42,23 @@ public class TaskStore {
         ArrayList<TaskRecord> list = new ArrayList<>(tasks());
         for (int i = 0; i < list.size(); i++) {
             TaskRecord item = list.get(i);
-            if (item.id.equals(id)) list.set(i, new TaskRecord(item.id, empty(title, item.title), request, planJson, "draft", item.transcript, System.currentTimeMillis()));
+            if (item.id.equals(id)) list.set(i, item.withPlan(empty(title, item.title), request, planJson));
         }
         saveAll(list);
+    }
+
+    public void updateSchedule(String id, String mode, long scheduleAt, int intervalMinutes, int maxRuns, int runCount) {
+        ArrayList<TaskRecord> list = new ArrayList<>(tasks());
+        for (int i = 0; i < list.size(); i++) {
+            TaskRecord item = list.get(i);
+            if (item.id.equals(id)) list.set(i, item.withSchedule(mode, scheduleAt, intervalMinutes, maxRuns, runCount));
+        }
+        saveAll(list);
+    }
+
+    public void incrementRunCount(String id) {
+        TaskRecord task = find(id);
+        if (task != null) updateSchedule(id, task.mode, task.scheduleAt, task.intervalMinutes, task.maxRuns, task.runCount + 1);
     }
 
     public void delete(String id) {
@@ -66,7 +85,12 @@ public class TaskStore {
                     item.optString("planJson"),
                     item.optString("status"),
                     item.optString("transcript"),
-                    item.optLong("updatedAt")
+                    item.optLong("updatedAt"),
+                    item.optString("mode", "normal"),
+                    item.optLong("scheduleAt", 0),
+                    item.optInt("intervalMinutes", 0),
+                    item.optInt("maxRuns", 1),
+                    item.optInt("runCount", 0)
                 ));
             }
         } catch (Exception ignored) {
@@ -101,8 +125,18 @@ public class TaskStore {
         public final String status;
         public final String transcript;
         public final long updatedAt;
+        public final String mode;
+        public final long scheduleAt;
+        public final int intervalMinutes;
+        public final int maxRuns;
+        public final int runCount;
 
         public TaskRecord(String id, String title, String request, String planJson, String status, String transcript, long updatedAt) {
+            this(id, title, request, planJson, status, transcript, updatedAt, "normal", 0, 0, 1, 0);
+        }
+
+        public TaskRecord(String id, String title, String request, String planJson, String status, String transcript, long updatedAt,
+                          String mode, long scheduleAt, int intervalMinutes, int maxRuns, int runCount) {
             this.id = id;
             this.title = empty(title, "未命名任务");
             this.request = empty(request, "");
@@ -110,6 +144,26 @@ public class TaskStore {
             this.status = empty(status, "draft");
             this.transcript = empty(transcript, "");
             this.updatedAt = updatedAt;
+            this.mode = empty(mode, "normal");
+            this.scheduleAt = scheduleAt;
+            this.intervalMinutes = Math.max(0, intervalMinutes);
+            this.maxRuns = Math.max(1, maxRuns);
+            this.runCount = Math.max(0, runCount);
+        }
+
+        TaskRecord withExecution(String status, String transcript) {
+            return new TaskRecord(id, title, request, planJson, status, transcript, System.currentTimeMillis(),
+                mode, scheduleAt, intervalMinutes, maxRuns, runCount);
+        }
+
+        TaskRecord withPlan(String title, String request, String planJson) {
+            return new TaskRecord(id, title, request, planJson, "draft", transcript, System.currentTimeMillis(),
+                mode, scheduleAt, intervalMinutes, maxRuns, runCount);
+        }
+
+        TaskRecord withSchedule(String mode, long scheduleAt, int intervalMinutes, int maxRuns, int runCount) {
+            return new TaskRecord(id, title, request, planJson, status, transcript, System.currentTimeMillis(),
+                mode, scheduleAt, intervalMinutes, maxRuns, runCount);
         }
 
         JSONObject toJson() throws Exception {
@@ -120,7 +174,12 @@ public class TaskStore {
                 .put("planJson", planJson)
                 .put("status", status)
                 .put("transcript", transcript)
-                .put("updatedAt", updatedAt);
+                .put("updatedAt", updatedAt)
+                .put("mode", mode)
+                .put("scheduleAt", scheduleAt)
+                .put("intervalMinutes", intervalMinutes)
+                .put("maxRuns", maxRuns)
+                .put("runCount", runCount);
         }
     }
 }

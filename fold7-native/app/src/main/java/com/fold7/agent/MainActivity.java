@@ -31,10 +31,14 @@ import com.fold7.agent.core.ConfigStore;
 import com.fold7.agent.core.LogStore;
 import com.fold7.agent.core.ModelClient;
 import com.fold7.agent.core.RuntimeAgent;
+import com.fold7.agent.core.TaskScheduler;
 import com.fold7.agent.core.TaskStore;
 import org.json.JSONObject;
+import java.text.SimpleDateFormat;
 import java.util.ArrayList;
+import java.util.Date;
 import java.util.List;
+import java.util.Locale;
 
 public class MainActivity extends Activity implements LogStore.Listener {
     private static final int CANVAS = Color.rgb(244, 242, 236);
@@ -61,6 +65,7 @@ public class MainActivity extends Activity implements LogStore.Listener {
     private int tab = 0;
     private int settingsPage = 0;
     private String editingTaskId = "";
+    private String chatTaskMode = "normal";
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -68,7 +73,7 @@ public class MainActivity extends Activity implements LogStore.Listener {
         config = new ConfigStore(this);
         tasks = new TaskStore(this);
         executor = new ActionExecutor(this);
-        chat = new ChatEngine(new ModelClient(config), tasks);
+        rebuildChat();
         LogStore.setListener(this);
         setContentView(shell());
         showTab(0);
@@ -195,6 +200,7 @@ public class MainActivity extends Activity implements LogStore.Listener {
         page.addView(sectionTitle("AI 对话"));
         TextView hint = text("先确认用户意图，再生成动作计划，最后由原生执行器运行。", 13, MUTED, false);
         page.addView(hint);
+        page.addView(taskModeSelector());
         chatMessages = new LinearLayout(this);
         chatMessages.setOrientation(LinearLayout.VERTICAL);
         chatMessages.setPadding(0, dp(8), 0, dp(8));
@@ -230,6 +236,34 @@ public class MainActivity extends Activity implements LogStore.Listener {
         return page;
     }
 
+    private View taskModeSelector() {
+        LinearLayout row = new LinearLayout(this);
+        row.setOrientation(LinearLayout.HORIZONTAL);
+        row.setPadding(0, dp(8), 0, dp(4));
+        row.addView(modeButton("普通", "normal"), new LinearLayout.LayoutParams(0, dp(40), 1));
+        LinearLayout.LayoutParams tp = new LinearLayout.LayoutParams(0, dp(40), 1);
+        tp.leftMargin = dp(8);
+        row.addView(modeButton("定时", "timed"), tp);
+        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(0, dp(40), 1);
+        lp.leftMargin = dp(8);
+        row.addView(modeButton("循环", "loop"), lp);
+        return row;
+    }
+
+    private Button modeButton(final String label, final String mode) {
+        Button button = "normal".equals(mode) ? ghostButton(label) : ghostButton(label);
+        button.setText(("".equals(chatTaskMode) ? "normal" : chatTaskMode).equals(mode) ? label + " 已选" : label);
+        button.setBackground(round(chatTaskMode.equals(mode) ? SOFT : PANEL, dp(8)));
+        button.setOnClickListener(new View.OnClickListener() {
+            public void onClick(View v) {
+                chatTaskMode = mode;
+                chat.setTaskMode(mode);
+                showTab(1);
+            }
+        });
+        return button;
+    }
+
     private View manage() {
         if (editingTaskId.length() > 0) return taskEditor();
         LinearLayout page = page();
@@ -251,6 +285,7 @@ public class MainActivity extends Activity implements LogStore.Listener {
         lp.topMargin = dp(10);
         box.setLayoutParams(lp);
         box.addView(text(task.title + "\n" + task.status + "\n" + task.request, 13, INK, false));
+        box.addView(text(task.mode + scheduleSummary(task), 12, MUTED, false));
         LinearLayout row = new LinearLayout(this);
         row.setOrientation(LinearLayout.HORIZONTAL);
         Button view = ghostButton("查看");
@@ -267,6 +302,7 @@ public class MainActivity extends Activity implements LogStore.Listener {
         Button delete = ghostButton("删除");
         delete.setOnClickListener(new View.OnClickListener() {
             public void onClick(View v) {
+                TaskScheduler.cancel(MainActivity.this, task.id);
                 tasks.delete(task.id);
                 Toast.makeText(MainActivity.this, "已删除任务", Toast.LENGTH_SHORT).show();
                 showTab(2);
@@ -294,9 +330,17 @@ public class MainActivity extends Activity implements LogStore.Listener {
         final EditText title = input(task.title, "任务名称");
         final EditText request = multilineInput(task.request, "用户原始需求", 90);
         final EditText plan = multilineInput(task.planJson, "动作计划 JSON", 260);
+        final EditText mode = input(task.mode, "normal/timed/loop");
+        final EditText startAt = input(task.scheduleAt > 0 ? formatTime(task.scheduleAt) : "", "yyyy-MM-dd HH:mm");
+        final EditText interval = input(task.intervalMinutes > 0 ? String.valueOf(task.intervalMinutes) : "", "循环间隔分钟");
+        final EditText maxRuns = input(String.valueOf(task.maxRuns), "执行次数");
         page.addView(labeled("Title", title));
         page.addView(labeled("Request", request));
         page.addView(labeled("Plan JSON", plan));
+        page.addView(labeled("Task Mode", mode));
+        page.addView(labeled("Start Time", startAt));
+        page.addView(labeled("Loop Interval Minutes", interval));
+        page.addView(labeled("Max Runs", maxRuns));
         if (task.transcript.length() > 0) page.addView(cardText("执行记录\n" + task.transcript));
         LinearLayout row = new LinearLayout(this);
         row.setOrientation(LinearLayout.HORIZONTAL);
@@ -304,6 +348,7 @@ public class MainActivity extends Activity implements LogStore.Listener {
         save.setOnClickListener(new View.OnClickListener() {
             public void onClick(View v) {
                 tasks.updatePlan(task.id, title.getText().toString(), request.getText().toString(), plan.getText().toString());
+                saveScheduleFields(task.id, mode, startAt, interval, maxRuns);
                 Toast.makeText(MainActivity.this, "已保存任务", Toast.LENGTH_SHORT).show();
                 editingTaskId = "";
                 showTab(2);
@@ -313,6 +358,7 @@ public class MainActivity extends Activity implements LogStore.Listener {
         run.setOnClickListener(new View.OnClickListener() {
             public void onClick(View v) {
                 tasks.updatePlan(task.id, title.getText().toString(), request.getText().toString(), plan.getText().toString());
+                saveScheduleFields(task.id, mode, startAt, interval, maxRuns);
                 editingTaskId = "";
                 executeTask(task.id);
             }
@@ -323,6 +369,18 @@ public class MainActivity extends Activity implements LogStore.Listener {
         row.addView(run, rp);
         page.addView(row);
         return scroll(page);
+    }
+
+    private void saveScheduleFields(String taskId, EditText mode, EditText startAt, EditText interval, EditText maxRuns) {
+        String value = mode.getText().toString().trim();
+        if (!"timed".equals(value) && !"loop".equals(value)) value = "normal";
+        long scheduleAt = parseTime(startAt.getText().toString().trim());
+        int intervalMinutes = Math.round(num(interval, 0));
+        int runs = Math.max(1, Math.round(num(maxRuns, 1)));
+        tasks.updateSchedule(taskId, value, scheduleAt, intervalMinutes, runs, 0);
+        TaskStore.TaskRecord updated = tasks.find(taskId);
+        TaskScheduler.cancel(this, taskId);
+        if (updated != null && !"normal".equals(updated.mode)) TaskScheduler.schedule(this, updated);
     }
 
     private View manageBackHeader(String label) {
@@ -454,7 +512,7 @@ public class MainActivity extends Activity implements LogStore.Listener {
                 config.saveCustomModel(name.getText().toString(), provider.getText().toString(), format.getText().toString(),
                     baseUrl.getText().toString(), apiKey.getText().toString(), model.getText().toString());
                 config.saveActionTimeoutMs(Math.round(num(timeout, config.actionTimeoutMs())));
-                chat = new ChatEngine(new ModelClient(config), tasks);
+                rebuildChat();
                 LogStore.add("CFG", "Model saved and activated: " + config.activeModelName());
                 Toast.makeText(MainActivity.this, "已启用模型：" + config.activeModelName(), Toast.LENGTH_SHORT).show();
                 settingsPage = 1;
@@ -531,7 +589,7 @@ public class MainActivity extends Activity implements LogStore.Listener {
         view.setOnClickListener(new View.OnClickListener() {
             public void onClick(View v) {
                 if (config.activateModel(profile.id)) {
-                    chat = new ChatEngine(new ModelClient(config), tasks);
+                    rebuildChat();
                     LogStore.add("CFG", "Activated model: " + config.activeModelName());
                     Toast.makeText(MainActivity.this, "已启用模型：" + config.activeModelName(), Toast.LENGTH_SHORT).show();
                     settingsPage = 1;
@@ -624,8 +682,32 @@ public class MainActivity extends Activity implements LogStore.Listener {
         boolean ok = config.importAutoXConfig();
         LogStore.add(ok ? "CFG" : "CFG", ok ? "Imported AutoX config" : "No existing AutoX config found");
         if (ok) {
-            chat = new ChatEngine(new ModelClient(config), tasks);
+            rebuildChat();
             showTab(tab);
+        }
+    }
+
+    private void rebuildChat() {
+        chat = new ChatEngine(new ModelClient(config), tasks);
+        chat.setTaskMode(chatTaskMode);
+    }
+
+    private String scheduleSummary(TaskStore.TaskRecord task) {
+        if ("normal".equals(task.mode)) return "";
+        return "  " + (task.scheduleAt > 0 ? formatTime(task.scheduleAt) : "未设置时间")
+            + "  " + task.runCount + "/" + task.maxRuns
+            + ("loop".equals(task.mode) ? "  间隔" + task.intervalMinutes + "分钟" : "");
+    }
+
+    private String formatTime(long millis) {
+        return new SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.US).format(new Date(millis));
+    }
+
+    private long parseTime(String text) {
+        try {
+            return new SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.US).parse(text).getTime();
+        } catch (Exception ignored) {
+            return 0;
         }
     }
 

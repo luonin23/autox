@@ -11,6 +11,7 @@ public class ChatEngine {
     private JSONObject pendingPlan = null;
     private String pendingPlanRequest = "";
     private String pendingTaskId = "";
+    private String taskMode = "normal";
 
     public ChatEngine(ModelClient model, TaskStore tasks) {
         this.model = model;
@@ -23,6 +24,11 @@ public class ChatEngine {
 
     public boolean hasPendingPlan() {
         return pendingPlan != null;
+    }
+
+    public void setTaskMode(String mode) {
+        if ("timed".equals(mode) || "loop".equals(mode)) taskMode = mode;
+        else taskMode = "normal";
     }
 
     public String handle(String input, ActionExecutor executor) throws Exception {
@@ -42,10 +48,11 @@ public class ChatEngine {
                     JSONObject json = extractJson(plan);
                     pendingPlan = json;
                     pendingPlanRequest = request;
-                    pendingTaskId = tasks.savePlan(request, json);
+                    pendingTaskId = tasks.savePlan(request, json, taskMode);
                     pendingRequest = "";
                     pendingConfirmation = "";
-                    return "动作计划已生成，尚未执行，已保存到 Manage。\n\n" + summarize(json) + "\n请点击“执行”或输入“执行”后，我才会开始运行。";
+                    String modeHint = "normal".equals(taskMode) ? "" : "\n这是" + ("timed".equals(taskMode) ? "定时任务" : "循环任务") + "，请到 Manage 中设置启动时间和执行次数。";
+                    return "动作计划已生成，尚未执行，已保存到 Manage。\n\n" + summarize(json) + modeHint + "\n请点击“执行”或输入“执行”后，我才会开始运行。";
                 } catch (Exception e) {
                     reset();
                     throw e;
